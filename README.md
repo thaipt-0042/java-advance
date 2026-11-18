@@ -8,10 +8,10 @@ Mini project của khóa **Java Spring Boot – Advance**: ứng dụng web giú
 |---|---|
 | Framework | Spring Boot 4.1 (Java 21) |
 | Build | Maven (wrapper `./mvnw`) |
-| Database | MySQL 8 (JPA / Hibernate), H2 cho test |
+| Database | MySQL 8.4 (JPA / Hibernate), migration bằng Flyway |
 | API Docs | springdoc-openapi (Swagger UI) |
 | Logging | SLF4J + Logback (`logback-spring.xml`) |
-| Testing | JUnit 5 + Mockito + MockMvc |
+| Testing | JUnit 5 + Mockito + MockMvc, Testcontainers (MySQL) |
 
 ## Cấu trúc
 
@@ -24,7 +24,11 @@ src/main/java/com/sunasterisk/socialanalytics
 ├── repository/    # Spring Data JPA repositories
 ├── dto/           # request/response DTO
 ├── entity/        # JPA entities
+├── seed/          # dữ liệu mẫu cho profile dev
 └── util/          # helper
+
+src/main/resources/db/migration   # Flyway migration (V1__init_schema.sql, ...)
+docs/01-thiet-ke-csdl.md          # thiết kế CSDL
 ```
 
 ## Chạy local
@@ -50,11 +54,13 @@ docker compose up -d
 
 | Profile | Khác biệt |
 |---|---|
-| (mặc định) | `ddl-auto=validate`, tắt Swagger/OpenAPI, log `INFO` |
-| `dev` | `ddl-auto=update`, bật Swagger/OpenAPI, log package app ở `DEBUG` |
-| `test` | H2 in-memory (MySQL mode), chỉ log ra console |
+| (mặc định) | Flyway tạo/cập nhật schema, Hibernate `validate`; tắt Swagger/OpenAPI; log `INFO` |
+| `dev` | như mặc định, thêm: bật Swagger/OpenAPI, seed dữ liệu mẫu khi DB trống, log package app ở `DEBUG` |
+| `test` | MySQL 8.4 qua Testcontainers, chỉ log ra console |
 
-Các biến cấu hình (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `PORT`, `SPRING_PROFILES_ACTIVE`) xem trong `.env.example`.
+Các biến cấu hình (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `PORT`, `APP_TIME_ZONE`, `SPRING_PROFILES_ACTIVE`) xem trong `.env.example`.
+
+Schema thay đổi bằng cách thêm file migration mới (`V2__...sql`), không sửa file đã chạy.
 
 ## Test
 
@@ -62,4 +68,4 @@ Các biến cấu hình (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PAS
 ./mvnw test
 ```
 
-Test dùng profile `test` với H2 in-memory nên không cần MySQL.
+Test chạy trên MySQL 8.4 thật qua Testcontainers nên cần Docker đang chạy (không cần `docker compose up`). Một container dùng chung cho cả lượt test.
