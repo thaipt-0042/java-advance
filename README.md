@@ -6,7 +6,7 @@ Mini project của khóa **Java Spring Boot – Advance**: ứng dụng web giú
 
 | Category | Choice |
 |---|---|
-| Framework | Spring Boot 3.5 (Java 21) |
+| Framework | Spring Boot 4.1 (Java 21) |
 | Build | Maven (wrapper `./mvnw`) |
 | Database | MySQL 8 (JPA / Hibernate), H2 cho test |
 | API Docs | springdoc-openapi (Swagger UI) |
