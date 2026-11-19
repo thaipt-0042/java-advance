@@ -20,23 +20,31 @@ import org.hibernate.type.SqlTypes;
 @Table(name = "posts")
 public class Post extends BaseEntity {
 
+    /** Column lengths, shared with request DTOs so validation matches the schema. */
+    public static final int EXTERNAL_ID_MAX_LENGTH = 100;
+    public static final int ACCOUNT_NAME_MAX_LENGTH = 100;
+    public static final int URL_MAX_LENGTH = 1000;
+    public static final int CONTENT_MAX_LENGTH = 5000;
+    /** Accepted {@code url}: http(s) only; empty is allowed and stored as null. */
+    public static final String URL_PATTERN = "^(https?://.*)?$";
+
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "platform", nullable = false, length = 20)
     private SocialPlatform platform;
 
     /** Id of the post on the platform; unique together with {@link #platform}. */
-    @Column(name = "external_id", nullable = false, length = 100)
+    @Column(name = "external_id", nullable = false, length = EXTERNAL_ID_MAX_LENGTH)
     private String externalId;
 
     /** Page / account handle that published the post. */
-    @Column(name = "account_name", nullable = false, length = 100)
+    @Column(name = "account_name", nullable = false, length = ACCOUNT_NAME_MAX_LENGTH)
     private String accountName;
 
-    @Column(name = "url", length = 1000)
+    @Column(name = "url", length = URL_MAX_LENGTH)
     private String url;
 
-    @Column(name = "content", length = 5000)
+    @Column(name = "content", length = CONTENT_MAX_LENGTH)
     private String content;
 
     @Column(name = "published_at")
