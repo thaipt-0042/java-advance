@@ -1,5 +1,6 @@
 package com.sunasterisk.socialanalytics.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.endsWith;
@@ -15,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 
@@ -29,17 +31,26 @@ class PostApiTests extends ApiTestBase {
                          "publishedAt": "2026-03-01T03:00:00Z"}
                         """.formatted(externalId)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.platform").value("FACEBOOK"))
-                .andExpect(jsonPath("$.externalId").value(externalId))
-                .andExpect(jsonPath("$.publishedAt").value("2026-03-01T03:00:00Z"))
-                .andExpect(jsonPath("$.createdAt").isNotEmpty())
                 .andReturn().getResponse().getContentAsString();
         long id = ((Number) JsonPath.read(response, "$.id")).longValue();
 
-        mockMvc.perform(get("/api/v1/posts/{id}", id))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accountName").value("sun.asterisk"))
-                .andExpect(jsonPath("$.content").value("Xin chào"));
+        // Every field of PostResponse, on the create response and when read back.
+        for (String body : new String[] {response,
+                mockMvc.perform(get("/api/v1/posts/{id}", id)).andExpect(status().isOk())
+                        .andReturn().getResponse().getContentAsString()}) {
+            assertThat(JsonPath.<Map<String, Object>>read(body, "$")).containsOnlyKeys("id", "platform",
+                    "externalId", "accountName", "url", "content", "publishedAt", "createdAt", "updatedAt");
+            assertThat(JsonPath.<Number>read(body, "$.id").longValue()).isEqualTo(id);
+            assertThat(JsonPath.<String>read(body, "$.platform")).isEqualTo("FACEBOOK");
+            assertThat(JsonPath.<String>read(body, "$.externalId")).isEqualTo(externalId);
+            assertThat(JsonPath.<String>read(body, "$.accountName")).isEqualTo("sun.asterisk");
+            assertThat(JsonPath.<String>read(body, "$.url")).isEqualTo("https://www.facebook.com/sun.asterisk/posts/1");
+            assertThat(JsonPath.<String>read(body, "$.content")).isEqualTo("Xin chào");
+            assertThat(JsonPath.<String>read(body, "$.publishedAt")).isEqualTo("2026-03-01T03:00:00Z");
+            assertThat(JsonPath.<String>read(body, "$.createdAt")).isNotBlank()
+                    .isEqualTo(JsonPath.<String>read(response, "$.createdAt"));
+            assertThat(JsonPath.<String>read(body, "$.updatedAt")).isEqualTo(JsonPath.<String>read(body, "$.createdAt"));
+        }
     }
 
     @Test

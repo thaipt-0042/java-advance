@@ -11,7 +11,7 @@ import org.hibernate.validator.constraints.URL;
 public record PostUpdateRequest(
         @Schema(example = "sun.asterisk")
         @NotBlank @Size(max = Post.ACCOUNT_NAME_MAX_LENGTH) String accountName,
-        @Size(max = Post.URL_MAX_LENGTH) @URL(regexp = "^(https?://.*)?$") String url,
+        @Size(max = Post.URL_MAX_LENGTH) @URL(regexp = Post.URL_PATTERN) String url,
         @Size(max = Post.CONTENT_MAX_LENGTH) String content,
         Instant publishedAt) {
 }

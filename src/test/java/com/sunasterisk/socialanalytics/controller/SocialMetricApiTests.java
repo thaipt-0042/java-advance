@@ -24,10 +24,16 @@ class SocialMetricApiTests extends ApiTestBase {
                         .content(metricJson(postId, "2026-03-01T03:00:00Z", 10)))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", containsString("/api/v1/metrics/")))
+                .andExpect(jsonPath("$.id").isNumber())
                 .andExpect(jsonPath("$.postId").value(postId))
                 .andExpect(jsonPath("$.likes").value(10))
+                .andExpect(jsonPath("$.shares").value(2))
+                .andExpect(jsonPath("$.comments").value(3))
                 .andExpect(jsonPath("$.followers").value(100))
-                .andExpect(jsonPath("$.capturedAt").value("2026-03-01T03:00:00Z"));
+                .andExpect(jsonPath("$.capturedAt").value("2026-03-01T03:00:00Z"))
+                .andExpect(jsonPath("$.createdAt").isNotEmpty())
+                .andExpect(jsonPath("$.updatedAt").isNotEmpty())
+                .andExpect(jsonPath("$.length()").value(9));
     }
 
     @Test

@@ -17,7 +17,7 @@ public record PostCreateRequest(
         @Schema(description = "Page / tài khoản đăng bài", example = "sun.asterisk")
         @NotBlank @Size(max = Post.ACCOUNT_NAME_MAX_LENGTH) String accountName,
         @Schema(example = "https://www.facebook.com/sun.asterisk/posts/1234567890")
-        @Size(max = Post.URL_MAX_LENGTH) @URL(regexp = "^(https?://.*)?$") String url,
+        @Size(max = Post.URL_MAX_LENGTH) @URL(regexp = Post.URL_PATTERN) String url,
         @Size(max = Post.CONTENT_MAX_LENGTH) String content,
         @Schema(description = "Thời điểm đăng (ISO-8601)", example = "2026-03-01T03:00:00Z")
         Instant publishedAt) {

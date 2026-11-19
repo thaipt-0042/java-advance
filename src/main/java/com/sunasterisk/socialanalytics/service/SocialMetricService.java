@@ -51,7 +51,7 @@ public class SocialMetricService {
 
     @Transactional
     public MetricResponse create(MetricCreateRequest request) {
-        Post post = postRepository.findById(request.postId())
+        Post post = postRepository.findByIdForShare(request.postId())
                 .orElseThrow(() -> postNotFound(request.postId()));
         Instant capturedAt = DbTime.toColumnPrecision(request.capturedAt());
         if (metricRepository.existsByPostIdAndCapturedAt(post.getId(), capturedAt)) {
@@ -67,7 +67,8 @@ public class SocialMetricService {
 
     @Transactional
     public MetricResponse update(Long id, MetricUpdateRequest request) {
-        SocialMetric metric = find(id);
+        // Locked on first read: a concurrent delete (of the snapshot or of its post) gives 404, not a 500.
+        SocialMetric metric = metricRepository.findByIdForUpdate(id).orElseThrow(() -> snapshotNotFound(id));
         Long postId = metric.getPost().getId();
         Instant capturedAt = DbTime.toColumnPrecision(request.capturedAt());
         if (metricRepository.existsByPostIdAndCapturedAtAndIdNot(postId, capturedAt, id)) {
@@ -84,11 +85,17 @@ public class SocialMetricService {
 
     @Transactional
     public void delete(Long id) {
-        metricRepository.delete(find(id));
+        if (metricRepository.deleteByIdReturningCount(id) == 0) {
+            throw snapshotNotFound(id);
+        }
     }
 
     private SocialMetric find(Long id) {
-        return metricRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("snapshot", id));
+        return metricRepository.findById(id).orElseThrow(() -> snapshotNotFound(id));
+    }
+
+    private static ResourceNotFoundException snapshotNotFound(Long id) {
+        return new ResourceNotFoundException("snapshot", id);
     }
 
     private static ResourceNotFoundException postNotFound(Long postId) {

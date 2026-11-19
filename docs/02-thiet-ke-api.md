@@ -33,6 +33,17 @@ Phạm vi: issue #4 (P1-03). Swagger UI (profile `dev`): http://localhost:8080/s
 
 `created_at`, `updated_at`, `captured_at`, `published_at` là `DATETIME(6)`. Thời gian client gửi lên và thời gian auditing đều được cắt về micro giây trước khi lưu (`DbTime`), nên giá trị trả về ngay sau POST/PUT trùng với giá trị đọc lại sau đó, và kiểm tra trùng `capturedAt` so đúng giá trị sẽ lưu.
 
+### Ghi đồng thời
+
+Hai request cùng lúc trên một dòng không được thành 500:
+
+- **Sửa** (`PUT`) khóa dòng ngay lần đọc đầu tiên (`findByIdForUpdate`, `SELECT ... FOR UPDATE`). Nếu dòng đang bị request khác xóa thì request sửa chờ, rồi không thấy dòng nữa nên trả 404. Không khóa thì câu UPDATE cập nhật 0 dòng, Hibernate ném `ObjectOptimisticLockingFailureException` và trả 500.
+- **Xóa** là một câu `DELETE ... WHERE id = ?`, không nạp entity trước; xóa 0 dòng thì trả 404.
+- **Thêm snapshot** đọc bài viết với khóa chia sẻ (`findByIdForShare`, `SELECT ... FOR SHARE`). Bài đang bị xóa thì trả 404, không phải 409 do vi phạm khóa ngoại.
+- **Trùng khóa nghiệp vụ** khi hai request cùng qua bước kiểm tra: ràng buộc UNIQUE chặn request sau, trả 409.
+
+`ConcurrentDeleteApiTests` tái hiện các trường hợp này bằng 2 luồng: xóa dòng trong một transaction chưa commit, chờ đến khi MySQL báo request đang đợi khóa dòng đó (`performance_schema.data_lock_waits`), rồi mới commit. `ConcurrentWriteApiTests` giả lập trường hợp trùng bằng `@MockitoSpyBean`.
+
 ## Định dạng lỗi
 
 Mọi lỗi đều trả [`ProblemDetail`](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`) kèm `code`; lỗi validation có thêm `errors`:

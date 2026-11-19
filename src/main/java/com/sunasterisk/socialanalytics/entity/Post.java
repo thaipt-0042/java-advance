@@ -25,6 +25,8 @@ public class Post extends BaseEntity {
     public static final int ACCOUNT_NAME_MAX_LENGTH = 100;
     public static final int URL_MAX_LENGTH = 1000;
     public static final int CONTENT_MAX_LENGTH = 5000;
+    /** Accepted {@code url}: http(s) only; empty is allowed and stored as null. */
+    public static final String URL_PATTERN = "^(https?://.*)?$";
 
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)

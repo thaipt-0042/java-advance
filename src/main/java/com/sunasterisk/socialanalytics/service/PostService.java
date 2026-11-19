@@ -23,6 +23,9 @@ import org.springframework.util.StringUtils;
  * <p>A duplicate {@code (platform, externalId)} is checked first to return a precise message; two concurrent
  * requests can both pass that check, then the UNIQUE constraint rejects the second one
  * ({@code DataIntegrityViolationException}, also 409 in {@code GlobalExceptionHandler}).
+ *
+ * <p>Update locks the row on its first read and delete is a single {@code DELETE} checked by row count, so a post
+ * deleted concurrently gives 404 rather than a 500 from Hibernate's "unexpected row count" check.
  */
 @Service
 @Transactional(readOnly = true)
@@ -63,7 +66,7 @@ public class PostService {
 
     @Transactional
     public PostResponse update(Long id, PostUpdateRequest request) {
-        Post post = find(id);
+        Post post = postRepository.findByIdForUpdate(id).orElseThrow(() -> notFound(id));
         post.setAccountName(request.accountName().strip());
         post.setUrl(blankToNull(request.url()));
         post.setContent(blankToNull(request.content()));
@@ -75,11 +78,17 @@ public class PostService {
     /** Deletes the post; its metrics are removed by the database ({@code ON DELETE CASCADE}). */
     @Transactional
     public void delete(Long id) {
-        postRepository.delete(find(id));
+        if (postRepository.deleteByIdReturningCount(id) == 0) {
+            throw notFound(id);
+        }
     }
 
     private Post find(Long id) {
-        return postRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("bài viết", id));
+        return postRepository.findById(id).orElseThrow(() -> notFound(id));
+    }
+
+    private static ResourceNotFoundException notFound(Long id) {
+        return new ResourceNotFoundException("bài viết", id);
     }
 
     private static String blankToNull(String value) {
