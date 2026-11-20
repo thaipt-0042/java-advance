@@ -1,8 +1,11 @@
 # Thiết kế cơ sở dữ liệu
 
-Phạm vi: issue #3 (P1-02). Schema tạo bằng Flyway: `src/main/resources/db/migration/V1__init_schema.sql`. Hibernate chỉ `validate`, không tự sửa schema ở bất kỳ profile nào.
+Schema tạo bằng Flyway; Hibernate chỉ `validate`, không tự sửa schema ở bất kỳ profile nào.
 
-## Sơ đồ
+- **Đã có** (issue #3, `src/main/resources/db/migration/V1__init_schema.sql`): `users`, `posts`, `social_metrics`. Đây là 3 entity mà giai đoạn "Khởi tạo project" của đề yêu cầu.
+- **Dự kiến** (mục [Lộ trình schema](#lộ-trình-schema-dự-kiến)): các bảng mà những giai đoạn sau cần (lưu token đăng nhập, lịch sử chạy job, lịch sử import, thống kê tổng hợp). Mỗi bảng được thêm bằng một migration mới trong đúng issue dùng nó; không sửa file migration đã chạy.
+
+## Sơ đồ hiện tại (V1)
 
 ```mermaid
 erDiagram
@@ -42,7 +45,7 @@ erDiagram
     posts ||--o{ social_metrics : "có nhiều snapshot"
 ```
 
-## Bảng
+## Bảng hiện có (V1)
 
 ### `users`
 
@@ -91,7 +94,7 @@ Snapshot số tương tác của một bài tại thời điểm `captured_at`. 
 
 Mọi bảng có `id` (BIGINT AUTO_INCREMENT), `created_at`, `updated_at` (DATETIME(6), NOT NULL).
 
-## Quyết định thiết kế
+## Quyết định thiết kế (V1)
 
 1. **Giá trị cố định dùng enum, lưu theo tên (VARCHAR + CHECK) thay vì kiểu `ENUM` của MySQL.** Entity dùng `@Enumerated(STRING)` kèm `@JdbcTypeCode(SqlTypes.VARCHAR)` để khai báo rõ kiểu cột khớp với migration, không phụ thuộc vào kiểu mặc định Hibernate chọn cho enum trên MySQL. Thêm giá trị mới chỉ cần sửa CHECK bằng migration, không phải `ALTER` kiểu cột.
 2. **`followers` nằm trong `social_metrics`.** Đề chỉ yêu cầu 3 entity `User`, `Post`, `SocialMetric` và nêu followers cùng nhóm với likes/shares. Mỗi snapshot lưu số follower của tài khoản đăng bài tại thời điểm đo, nên các bài cùng tài khoản đo cùng lúc sẽ lặp lại cùng một số. Khi tổng hợp followers theo tài khoản phải lấy một giá trị cho mỗi `(platform, account_name, captured_at)` (ví dụ `MAX`), không được cộng dồn theo bài. Nếu sau này cần lịch sử follower độc lập với bài viết thì tách bảng `social_accounts` bằng migration mới.
@@ -104,3 +107,129 @@ Mọi bảng có `id` (BIGINT AUTO_INCREMENT), `created_at`, `updated_at` (DATET
 
 - **Vi phạm UNIQUE, FK hay CHECK đều thành `DataIntegrityViolationException`** (Hibernate 7, test trong `PostRepositoryTests`/`SocialMetricRepositoryTests`). Handler ở #4 map lỗi này về 409, nhưng 409 chỉ đúng cho trường hợp trùng dữ liệu; số âm hay platform không hợp lệ là lỗi input, nên DTO ở #4/#6 phải chặn trước: số âm bằng `@PositiveOrZero` (422), platform lạ bị chặn ngay khi đọc JSON vì DTO dùng kiểu enum (400). CHECK chỉ là lớp bảo vệ cuối. Bảng mã lỗi đầy đủ ở `docs/02-thiet-ke-api.md`.
 - **Collation `utf8mb4_0900_ai_ci`** không phân biệt hoa/thường và dấu: so sánh `account_name` hay tìm kiếm `content` sẽ coi `Thai` và `Thái` là bằng nhau.
+
+## Lộ trình schema (dự kiến)
+
+Phần này là **thiết kế, chưa có migration**. Số version (`V2`, `V3`, …) đặt khi làm, theo thứ tự issue được merge; tài liệu chỉ ghi "migration mới ở #N". Câu hỏi còn mở về các bảng này nằm ở [cau-hoi-lam-ro.md](cau-hoi-lam-ro.md) (Q…), phần nào phụ thuộc câu trả lời thì ghi rõ.
+
+| Bảng | Issue thêm | Giai đoạn của đề cần nó | Vì sao cần bảng riêng |
+|---|---|---|---|
+| `oauth2_authorized_client` | #9 | Bảo mật & Social Login: "Lưu token truy cập và thông tin user" | Thông tin user đã ở `users`; token truy cập lưu theo schema chuẩn của Spring Security thay vì tự thêm cột vào `users` |
+| `import_batches` | #6 | Unit Test + Import/Export Excel; JMS: "import Excel → publish `IMPORT_COMPLETED`" | Mỗi lần import có một id để message JMS tham chiếu, và lưu lại ai import, kết quả ra sao |
+| `metric_update_runs` | #10 | Background Job: "Thêm màn hình Last updated time" | Lưu thời điểm và trạng thái từng lần chạy job (kể cả lần lỗi); `MAX(captured_at)` không cho biết lần chạy gần nhất có lỗi hay không |
+| `daily_platform_stats` | #12 | JMS: "Listener nhận message → cập nhật thống kê tổng hợp"; WebSocket: "`/chart-data` trả dữ liệu tổng hợp" | Đề yêu cầu cập nhật thống kê tổng hợp bất đồng bộ, nên cần nơi lưu kết quả tổng hợp; biểu đồ đọc bảng nhỏ này thay vì quét toàn bộ snapshot |
+
+Không thêm bảng cho: session đăng nhập (giữ trong bộ nhớ, chạy một instance, xem `docs/03-kien-truc.md`), tài khoản mạng xã hội được theo dõi (`social_accounts`, xem quyết định 2 ở trên: chỉ tách khi cần lịch sử follower độc lập với bài viết), tỷ giá SOAP (gọi khi cần, cache trong bộ nhớ).
+
+### Sơ đồ sau khi đủ các bảng
+
+Bảng có dấu `*` là dự kiến. `oauth2_authorized_client` không có FK tới `users` vì do Spring Security quản lý; hai bảng nối với nhau bằng `(client_registration_id, principal_name)` = `(provider, provider_user_id)` (viết thường/hoa khác nhau, xem bên dưới).
+
+```mermaid
+erDiagram
+    users ||--o{ import_batches : "import (uploaded_by)"
+    users ||--o{ metric_update_runs : "chạy tay (triggered_by)"
+    users ||..o| oauth2_authorized_client : "provider + provider_user_id"
+    posts ||--o{ social_metrics : "có nhiều snapshot"
+    oauth2_authorized_client {
+        VARCHAR client_registration_id PK "*"
+        VARCHAR principal_name PK "*"
+        BLOB access_token_value
+        TIMESTAMP access_token_expires_at
+    }
+    import_batches {
+        BIGINT id PK "*"
+        BIGINT uploaded_by FK
+        INT total_rows
+        DATETIME captured_at "nullable"
+        DATETIME stats_refreshed_at "nullable"
+    }
+    metric_update_runs {
+        BIGINT id PK "*"
+        VARCHAR trigger_type "SCHEDULED | MANUAL"
+        VARCHAR status "RUNNING | SUCCEEDED | PARTIAL | FAILED"
+        DATETIME started_at
+        DATETIME finished_at "nullable"
+    }
+    daily_platform_stats {
+        DATE stat_date PK "*"
+        VARCHAR platform PK "*"
+        BIGINT likes
+        BIGINT followers
+    }
+```
+
+`daily_platform_stats` không có FK: nó là dữ liệu dẫn xuất, tính lại được hoàn toàn từ `posts` + `social_metrics`.
+
+### `oauth2_authorized_client` (#9)
+
+Đề xuất dùng `JdbcOAuth2AuthorizedClientService` của Spring Security, nên bảng theo đúng schema chuẩn đi kèm Spring Security (`oauth2-client-schema.sql`), viết lại cho MySQL. Danh sách cột dưới đây theo schema đó; **kiểm tra lại với bản Spring Security đang dùng khi làm #9**, vì service đọc/ghi đúng tên cột.
+
+| Cột | Kiểu (MySQL) | Ghi chú |
+|---|---|---|
+| `client_registration_id` | VARCHAR(100), PK | `facebook` / `twitter` (id đăng ký client trong cấu hình) |
+| `principal_name` | VARCHAR(200), PK | tên principal sau khi login, đề xuất là id tài khoản phía provider |
+| `access_token_type` | VARCHAR(100) | `Bearer` |
+| `access_token_value` | BLOB | token truy cập |
+| `access_token_issued_at`, `access_token_expires_at` | TIMESTAMP | |
+| `access_token_scopes` | VARCHAR(1000), NULL | |
+| `refresh_token_value` | BLOB, NULL | Facebook không cấp refresh token theo luồng thường; X có thể cấp khi xin scope `offline.access` (kiểm tra khi làm #9) |
+| `refresh_token_issued_at` | TIMESTAMP, NULL | |
+| `created_at` | TIMESTAMP, mặc định thời điểm insert | |
+
+- **Đề yêu cầu** lưu token truy cập. **Đề xuất**: token không bao giờ được log, không trả ra API, không đưa vào export.
+- Token lưu dạng rõ trong DB (mặc định của Spring Security). Có mã hóa khi lưu hay không là câu hỏi Q8.
+- Liên kết với `users`: `principal_name` = `users.provider_user_id`, `client_registration_id` = `users.provider` viết thường. Không đặt FK vì Spring Security tự insert/xóa bảng này.
+- Cột `TIMESTAMP` ở bảng này là theo schema chuẩn (giới hạn năm 2038 của MySQL `TIMESTAMP` không ảnh hưởng vì token sống ngắn); các bảng của app vẫn dùng `DATETIME(6)` UTC.
+
+### `import_batches` (#6, dùng ở #12)
+
+Một dòng cho mỗi lần import **thành công**. Đề xuất import theo kiểu tất cả hoặc không có gì (Q4): file có dòng lỗi thì trả 422 kèm danh sách lỗi, không ghi gì, nên không có dòng "import lỗi" ở đây.
+
+| Cột | Kiểu | Ràng buộc | Ghi chú |
+|---|---|---|---|
+| `file_name` | VARCHAR(255) | NOT NULL | tên file gốc, chỉ để hiển thị (không dùng làm đường dẫn) |
+| `uploaded_by` | BIGINT | NULL, FK → `users.id` `ON DELETE SET NULL` | |
+| `total_rows` | INT | NOT NULL, CHECK `>= 0` | số dòng dữ liệu |
+| `created_posts`, `updated_posts` | INT | NOT NULL, CHECK `>= 0` | bài mới / bài đã có được cập nhật (Q4: trùng thì cập nhật) |
+| `snapshots_created` | INT | NOT NULL, CHECK `>= 0` | > 0 khi file có cột số liệu (Q3) |
+| `captured_at` | DATETIME(6) | NULL | thời điểm gán cho snapshot của lần import này (một giá trị cho cả file) |
+| `stats_refreshed_at` | DATETIME(6) | NULL | listener JMS điền khi đã tính lại thống kê; NULL lâu nghĩa là message chưa được xử lý hoặc đã vào DLQ |
+
+- Ghi `import_batches` cùng transaction với các `posts`/`social_metrics` của file; message `IMPORT_COMPLETED` mang `batchId` và chỉ gửi **sau khi commit** (#12).
+- INDEX `(created_at)` cho danh sách import gần đây.
+
+### `metric_update_runs` (#10, hiển thị ở #11)
+
+| Cột | Kiểu | Ràng buộc | Ghi chú |
+|---|---|---|---|
+| `trigger_type` | VARCHAR(20) | NOT NULL, CHECK `SCHEDULED`/`MANUAL` | enum `RunTrigger` |
+| `triggered_by` | BIGINT | NULL, FK → `users.id` `ON DELETE SET NULL` | chỉ có khi chạy tay |
+| `status` | VARCHAR(20) | NOT NULL, CHECK `RUNNING`/`SUCCEEDED`/`PARTIAL`/`FAILED` | `PARTIAL`: một số tài khoản lỗi |
+| `started_at` | DATETIME(6) | NOT NULL | cũng là `captured_at` của mọi snapshot tạo ra trong lần chạy |
+| `finished_at` | DATETIME(6) | NULL, CHECK `finished_at >= started_at` | NULL khi đang chạy |
+| `accounts_total`, `accounts_failed`, `snapshots_created` | INT | NOT NULL, mặc định 0, CHECK `>= 0` | |
+| `error_message` | VARCHAR(1000) | NULL | tóm tắt lỗi, không chứa token |
+
+- INDEX `(started_at)`: lấy lần chạy gần nhất.
+- "Last updated time" (#11) = `finished_at` của lần chạy `SUCCEEDED`/`PARTIAL` gần nhất; trang hiển thị thêm trạng thái của lần chạy gần nhất (kể cả `FAILED`).
+- Mọi snapshot của một lần chạy dùng chung `captured_at = started_at`. Hai lần chạy (định kỳ và chạy tay) có `started_at` khác nhau đến micro giây, nên không đụng `UNIQUE (post_id, captured_at)`. Followers của cùng tài khoản trong một lần chạy có chung `captured_at`, đúng với cách tổng hợp ở quyết định 2.
+- App khởi động lại khi đang chạy job thì dòng `RUNNING` bị bỏ dở: lúc khởi động đánh dấu các dòng đó `FAILED` ("bị ngắt"), để màn hình không báo "đang chạy" mãi.
+
+### `daily_platform_stats` (#12, đọc ở #13)
+
+Một dòng cho mỗi **ngày theo giờ Việt Nam** và mỗi nền tảng.
+
+| Cột | Kiểu | Ràng buộc | Ghi chú |
+|---|---|---|---|
+| `stat_date` | DATE | PK | ngày theo `Asia/Ho_Chi_Minh` |
+| `platform` | VARCHAR(20) | PK, CHECK `FACEBOOK`/`TWITTER` | |
+| `posts_tracked` | INT | NOT NULL, CHECK `>= 0` | số bài có ít nhất một snapshot trong ngày |
+| `likes`, `shares`, `comments` | BIGINT | NOT NULL, CHECK `>= 0` | tổng theo bài, mỗi bài lấy snapshot **mới nhất trong ngày** |
+| `followers` | BIGINT | NOT NULL, CHECK `>= 0` | tổng theo **tài khoản** `(platform, account_name)`, mỗi tài khoản lấy giá trị mới nhất trong ngày; không cộng theo bài (quyết định 2) |
+| `refreshed_at` | DATETIME(6) | NOT NULL | lần tính gần nhất |
+
+- **Tính lại từ dữ liệu gốc, không cộng dồn**: listener nhận danh sách ngày bị ảnh hưởng, với mỗi ngày xóa dòng của ngày đó rồi `INSERT … SELECT` lại từ `posts` + `social_metrics`, trong một transaction. Nhận trùng message thì kết quả vẫn như cũ (idempotent), và hai lần tính chạy song song không làm mất cập nhật của nhau. Đề xuất listener chạy một luồng (concurrency 1) để các lần tính không chen nhau.
+- **Ranh giới ngày tính trong Java**: ngày `D` theo giờ Việt Nam là khoảng `[D 00:00, D+1 00:00)` đổi sang UTC từ bean `Clock`, truyền vào câu SQL dạng tham số. Không dùng `CONVERT_TZ(..., 'Asia/Ho_Chi_Minh')` vì cần bảng múi giờ của MySQL, mà image Docker/Testcontainers không chắc đã nạp.
+- Ngày/nền tảng không có snapshot thì không có dòng; `/chart-data` (#13) `LEFT JOIN` từ chuỗi ngày × nền tảng nên ngày đó vẫn có mặt. Số hiển thị cho ngày thiếu dữ liệu: Q12.
+- "Các ngày bị ảnh hưởng": import → ngày của `captured_at`; job → ngày của `started_at`; sửa/xóa qua API `/metrics`, `/posts` → ngày của các snapshot bị đổi (đề xuất, Q5).
