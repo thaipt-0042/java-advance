@@ -31,6 +31,7 @@ src/main/java/com/sunasterisk/socialanalytics
 src/main/resources/db/migration   # Flyway migration (V1__init_schema.sql, ...)
 docs/01-thiet-ke-csdl.md          # thiết kế CSDL
 docs/02-thiet-ke-api.md           # API CRUD /posts, /metrics và format lỗi
+.github/workflows/ci.yml          # CI: ./mvnw verify trên GitHub Actions
 ```
 
 ## Chạy local
@@ -72,3 +73,5 @@ Schema thay đổi bằng cách thêm file migration mới (`V2__...sql`), khôn
 ```
 
 Test chạy trên MySQL 8.4 thật qua Testcontainers nên cần Docker đang chạy (không cần `docker compose up`). Một container dùng chung cho cả lượt test.
+
+CI (`.github/workflows/ci.yml`) chạy `./mvnw -B verify` trên GitHub Actions cho mọi PR (kể cả PR có base là nhánh feature) và mỗi lần push lên `main`. Test lỗi thì tải `surefire-reports` ở mục Artifacts của lượt chạy.
