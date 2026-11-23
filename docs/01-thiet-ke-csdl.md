@@ -154,6 +154,8 @@ erDiagram
     daily_platform_stats {
         DATE stat_date PK "*"
         VARCHAR platform PK "*"
+        INT posts_tracked
+        INT posts_measured
         BIGINT likes
         BIGINT followers
     }
@@ -218,18 +220,24 @@ Một dòng cho mỗi lần import **thành công**. Đề xuất import theo ki
 
 ### `daily_platform_stats` (#12, đọc ở #13)
 
-Một dòng cho mỗi **ngày theo giờ Việt Nam** và mỗi nền tảng.
+Một dòng cho mỗi **ngày theo giờ Việt Nam** và mỗi nền tảng. Số của ngày `D` là trạng thái **tính đến hết ngày `D`**: mỗi bài lấy snapshot mới nhất có `captured_at` trước 00:00 ngày `D+1`, kể cả khi snapshot đó thuộc ngày trước (Q12). likes, shares, comments, followers là số tích lũy, nên ngày không đo được bài nào đó vẫn giữ số gần nhất của bài đó thay vì tụt về 0.
 
 | Cột | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
 | `stat_date` | DATE | PK | ngày theo `Asia/Ho_Chi_Minh` |
 | `platform` | VARCHAR(20) | PK, CHECK `FACEBOOK`/`TWITTER` | |
-| `posts_tracked` | INT | NOT NULL, CHECK `>= 0` | số bài có ít nhất một snapshot trong ngày |
-| `likes`, `shares`, `comments` | BIGINT | NOT NULL, CHECK `>= 0` | tổng theo bài, mỗi bài lấy snapshot **mới nhất trong ngày** |
-| `followers` | BIGINT | NOT NULL, CHECK `>= 0` | tổng theo **tài khoản** `(platform, account_name)`, mỗi tài khoản lấy giá trị mới nhất trong ngày; không cộng theo bài (quyết định 2) |
+| `posts_tracked` | INT | NOT NULL, CHECK `>= 0` | số bài có ít nhất một snapshot tính đến hết ngày |
+| `posts_measured` | INT | NOT NULL, CHECK `>= 0` | số bài có snapshot **trong chính ngày đó**; nhỏ hơn `posts_tracked` nghĩa là ngày đó đo thiếu (job lỗi một phần) |
+| `likes`, `shares`, `comments` | BIGINT | NOT NULL, CHECK `>= 0` | tổng theo bài, mỗi bài lấy snapshot **mới nhất tính đến hết ngày** |
+| `followers` | BIGINT | NOT NULL, CHECK `>= 0` | tổng theo **tài khoản** `(platform, account_name)`, mỗi tài khoản lấy giá trị mới nhất tính đến hết ngày (từ snapshot của bất kỳ bài nào của tài khoản đó); không cộng theo bài (quyết định 2) |
 | `refreshed_at` | DATETIME(6) | NOT NULL | lần tính gần nhất |
 
-- **Tính lại từ dữ liệu gốc, không cộng dồn**: listener nhận danh sách ngày bị ảnh hưởng, với mỗi ngày xóa dòng của ngày đó rồi `INSERT … SELECT` lại từ `posts` + `social_metrics`, trong một transaction. Nhận trùng message thì kết quả vẫn như cũ (idempotent), và hai lần tính chạy song song không làm mất cập nhật của nhau. Đề xuất listener chạy một luồng (concurrency 1) để các lần tính không chen nhau.
+- **Tính lại từ dữ liệu gốc, không cộng dồn**: listener nhận ngày bắt đầu `fromDate`, với mỗi ngày từ `fromDate` tới hôm nay xóa dòng của ngày đó rồi `INSERT … SELECT` lại từ `posts` + `social_metrics` (`ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY captured_at DESC)` trên các snapshot trước ranh giới cuối ngày), tất cả trong một transaction. Nhận trùng message thì kết quả vẫn như cũ (idempotent), và hai lần tính chạy song song không làm mất cập nhật của nhau. Đề xuất listener chạy một luồng (concurrency 1) để các lần tính không chen nhau.
 - **Ranh giới ngày tính trong Java**: ngày `D` theo giờ Việt Nam là khoảng `[D 00:00, D+1 00:00)` đổi sang UTC từ bean `Clock`, truyền vào câu SQL dạng tham số. Không dùng `CONVERT_TZ(..., 'Asia/Ho_Chi_Minh')` vì cần bảng múi giờ của MySQL, mà image Docker/Testcontainers không chắc đã nạp.
-- Ngày/nền tảng không có snapshot thì không có dòng; `/chart-data` (#13) `LEFT JOIN` từ chuỗi ngày × nền tảng nên ngày đó vẫn có mặt. Số hiển thị cho ngày thiếu dữ liệu: Q12.
-- "Các ngày bị ảnh hưởng": import → ngày của `captured_at`; job → ngày của `started_at`; sửa/xóa qua API `/metrics`, `/posts` → ngày của các snapshot bị đổi (đề xuất, Q5).
+- **Ngày không có dòng** (app tắt cả ngày nên không ai tính lại): không có snapshot mới trong ngày đó, nên số đúng bằng dòng gần nhất trước đó của cùng nền tảng, với `posts_measured` = 0. `/chart-data` (#13) điền theo cách này; trước dòng đầu tiên của nền tảng thì là 0 (chưa có bài nào được đo).
+- **"Các ngày bị ảnh hưởng"** (Q5): đổi snapshot ngày `D` làm đổi mọi ngày từ `D` tới hôm nay, nên message chỉ mang `fromDate`:
+  - import → ngày của `captured_at` (lúc import, tức hôm nay);
+  - job → ngày của `started_at` (hôm nay);
+  - sửa/xóa snapshot qua `/metrics` → ngày sớm nhất trong `captured_at` cũ và mới;
+  - sửa bài qua `/posts` (đổi `account_name` làm đổi followers theo tài khoản) hoặc xóa bài → ngày của snapshot sớm nhất của bài, đọc trước khi xóa trong cùng transaction.
+- Import và job luôn ghi snapshot "bây giờ", nên thường chỉ tính lại một ngày. Chỉ sửa/xóa dữ liệu cũ qua API mới phải tính nhiều ngày (tối đa từ snapshot sớm nhất tới hôm nay, mỗi ngày một câu `INSERT … SELECT`).

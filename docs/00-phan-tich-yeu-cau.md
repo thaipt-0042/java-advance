@@ -10,7 +10,7 @@ Tài liệu liên quan:
 - [01-thiet-ke-csdl.md](01-thiet-ke-csdl.md): bảng hiện có và lộ trình schema.
 - [02-thiet-ke-api.md](02-thiet-ke-api.md): API đã làm và API dự kiến, format lỗi.
 - [03-kien-truc.md](03-kien-truc.md): package, bảo mật, job, JMS, WebSocket, SOAP.
-- [cau-hoi-lam-ro.md](cau-hoi-lam-ro.md): các điểm đề chưa rõ (Q1–Q12): Q1, Q2 đã chốt, các câu còn lại đang chờ trả lời.
+- [cau-hoi-lam-ro.md](cau-hoi-lam-ro.md): các điểm đề chưa rõ (Q1–Q12): Q1, Q2, Q5, Q12 đã chốt, các câu còn lại đang chờ trả lời.
 
 Quy ước: **Đề yêu cầu** là điều đề bài ghi; **Đề xuất** là lựa chọn của nhóm khi đề không nói, có thể đổi theo câu trả lời ở `cau-hoi-lam-ro.md`.
 
@@ -142,7 +142,7 @@ sequenceDiagram
 1. Đến giờ (cron đọc từ cấu hình, theo giờ Việt Nam), job tạo một dòng `metric_update_runs` trạng thái `RUNNING`. Lần chạy trước chưa xong thì bỏ qua lần này.
 2. Lấy danh sách tài khoản `(platform, account_name)`, mỗi tài khoản là một tác vụ trên `ThreadPoolTaskExecutor`.
 3. Mỗi tác vụ gọi API giả lập (không giữ transaction/connection DB khi chờ), rồi ghi snapshot của tài khoản đó trong một transaction ngắn. Lỗi ở một tài khoản chỉ được log và đếm, không làm dừng các tài khoản khác.
-4. Hết các tác vụ: cập nhật dòng `metric_update_runs` (`SUCCEEDED`/`PARTIAL`/`FAILED`), gửi `METRICS_UPDATED` vào queue (đề xuất, Q5) và event WebSocket `JOB_FINISHED`.
+4. Hết các tác vụ: cập nhật dòng `metric_update_runs` (`SUCCEEDED`/`PARTIAL`/`FAILED`), gửi `METRICS_UPDATED` vào queue (đã chốt, Q5) và event WebSocket `JOB_FINISHED`.
 
 ## 7. Quy tắc nghiệp vụ
 
@@ -152,7 +152,7 @@ sequenceDiagram
 - **Followers** là số của tài khoản, không phải của bài: tổng hợp lấy một giá trị cho mỗi tài khoản, không cộng theo bài (`01-thiet-ke-csdl.md`, quyết định 2).
 - **Quyền** (đã chốt, Q1): ghi dữ liệu, import, chạy job chỉ `ADMIN`; xem và export cho mọi user đã đăng nhập.
 - **Import** (đề xuất, Q3, Q4): tất cả hoặc không có gì; bài trùng thì cập nhật; tối đa 5MB, 5.000 dòng.
-- **Thống kê** (đề xuất, Q5): tính lại từ dữ liệu gốc cho các ngày bị ảnh hưởng, không cộng dồn, nên xử lý trùng message vẫn đúng.
+- **Thống kê** (đã chốt, Q5, Q12): tính lại sau import, sau mỗi lần chạy job và sau khi sửa/xóa qua API; tính lại từ dữ liệu gốc cho các ngày bị ảnh hưởng, không cộng dồn, nên xử lý trùng message vẫn đúng. Số của một ngày là tổng snapshot mới nhất của mỗi bài **tính đến hết ngày đó**, nên ngày thiếu snapshot không bị tụt về 0.
 - **Ghi đồng thời** (đã áp dụng từ #4): sửa thì khóa dòng ngay lần đọc đầu; xóa là một câu `DELETE` kiểm tra số dòng; trùng khóa nghiệp vụ do ràng buộc UNIQUE chặn và trả 409.
 
 ## 8. Yêu cầu phi chức năng

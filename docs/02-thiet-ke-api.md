@@ -137,20 +137,21 @@ Cột (đề xuất, Q3): `platform`, `externalId`, `accountName` bắt buộc; 
   "to": "2026-11-20",
   "dates": ["2026-11-19", "2026-11-20"],
   "series": [
-    {"platform": "FACEBOOK", "postsTracked": [4, 4], "likes": [1200, 1350], "shares": [80, 92], "comments": [40, 41], "followers": [25050, 25060]}
+    {"platform": "FACEBOOK", "postsTracked": [4, 4], "postsMeasured": [4, 3], "likes": [1200, 1350], "shares": [80, 92], "comments": [40, 41], "followers": [25050, 25060]}
   ],
   "lastUpdatedAt": "2026-11-20T03:00:00Z"
 }
 ```
 
-- Mỗi mảng dài bằng `dates`, lấy từ chuỗi ngày × nền tảng `LEFT JOIN` `daily_platform_stats` để ngày nào cũng có mặt (issue #13). Ngày không có snapshot: `postsTracked` là 0; likes/shares/comments/followers là 0 hay giá trị gần nhất trước đó là câu hỏi Q12.
+- Mỗi mảng dài bằng `dates`, đọc từ `daily_platform_stats`. Mỗi số là trạng thái **tính đến hết ngày đó** (Q12, đã chốt), nên ngày thiếu snapshot không tụt về 0. `postsMeasured` < `postsTracked` nghĩa là ngày đó đo thiếu.
+- Ngày không có dòng trong bảng (app tắt cả ngày) lấy dòng gần nhất trước đó của cùng nền tảng, `postsMeasured` là 0. Vì vậy truy vấn đọc thêm dòng gần nhất trước `from`. Trước dòng đầu tiên của nền tảng thì mọi số là 0.
 - `from` sau `to` hoặc khoảng quá dài: 422.
 
 ### WebSocket (#13)
 
 - Endpoint STOMP: `/ws` (SockJS). Chỉ user đã đăng nhập; frame `CONNECT` phải kèm CSRF token (lấy từ thẻ meta của trang).
 - Topic `/topic/metrics`, event dạng `{type, occurredAt, …}`, không chứa số liệu (client gọi lại `/chart-data`):
-  - `STATS_UPDATED` `{dates}`: thống kê các ngày này vừa được tính lại.
+  - `STATS_UPDATED` `{fromDate, toDate}`: thống kê các ngày trong khoảng này vừa được tính lại.
   - `JOB_FINISHED` `{runId, status, finishedAt}`: dashboard cập nhật "Last updated time".
 
 ### SOAP (#15)

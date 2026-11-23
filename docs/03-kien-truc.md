@@ -114,12 +114,12 @@ sequenceDiagram
 ## 5. JMS: thống kê tổng hợp (#12)
 
 - **Broker**: ActiveMQ Artemis (đề xuất, Q10) trong `docker-compose.yml`; test dùng Testcontainers.
-- **Queue** `analytics.stats-refresh`. Message JSON `{type, dates, batchId?, runId?}`:
+- **Queue** `analytics.stats-refresh`. Message JSON `{type, fromDate, batchId?, runId?}`; `fromDate` là ngày sớm nhất bị ảnh hưởng, listener tính lại từ ngày đó tới hôm nay (`01-thiet-ke-csdl.md`):
   - `IMPORT_COMPLETED` (**đề yêu cầu**) sau import, `batchId`;
-  - `METRICS_UPDATED` sau mỗi lần chạy job, `runId` (đề xuất, Q5);
-  - `METRICS_CHANGED` sau khi sửa/xóa bài hoặc snapshot qua API (đề xuất, Q5).
-- **Chỉ gửi sau khi commit**: service phát Spring event trong transaction; `@TransactionalEventListener(phase = AFTER_COMMIT)` mới gửi JMS. Rollback thì không gửi. Đánh đổi: app chết đúng lúc giữa commit và gửi thì mất message; lần chạy job kế tiếp tính lại ngày hôm nay nên số liệu tự khớp lại. Transactional outbox nằm ngoài phạm vi.
-- **Listener**: tính lại `daily_platform_stats` cho các ngày trong message (xóa + `INSERT … SELECT` trong một transaction, xem `01-thiet-ke-csdl.md`), điền `import_batches.stats_refreshed_at` nếu có `batchId`, rồi gửi WebSocket `STATS_UPDATED`. Chạy một luồng. Tính lại từ dữ liệu gốc nên nhận trùng message vẫn đúng (**issue #12** yêu cầu idempotent).
+  - `METRICS_UPDATED` sau mỗi lần chạy job, `runId` (đã chốt, Q5);
+  - `METRICS_CHANGED` sau khi sửa/xóa bài hoặc snapshot qua API (đã chốt, Q5).
+- **Chỉ gửi sau khi commit**: service phát Spring event trong transaction; `@TransactionalEventListener(phase = AFTER_COMMIT)` mới gửi JMS. Rollback thì không gửi. Đánh đổi: app chết đúng lúc giữa commit và gửi thì mất message; lần chạy job kế tiếp tính lại ngày hôm nay nên message của import/job tự khớp lại; message của một lần sửa dữ liệu cũ qua API bị mất thì các ngày cũ lệch cho tới lần sửa kế tiếp ở khoảng đó. Transactional outbox nằm ngoài phạm vi.
+- **Listener**: tính lại `daily_platform_stats` từ `fromDate` tới hôm nay (xóa + `INSERT … SELECT` trong một transaction, xem `01-thiet-ke-csdl.md`), điền `import_batches.stats_refreshed_at` nếu có `batchId`, rồi gửi WebSocket `STATS_UPDATED`. Chạy một luồng. Tính lại từ dữ liệu gốc nên nhận trùng message vẫn đúng (**issue #12** yêu cầu idempotent).
 - **Retry và DLQ** (**đề yêu cầu**): session có transaction; listener ném exception thì broker giao lại, tối đa vài lần có độ trễ, sau đó chuyển sang dead letter queue. Cấu hình số lần và độ trễ ở broker (address settings của Artemis), **kiểm tra khi làm #12**. Một listener trên DLQ log `ERROR` kèm nội dung message để biết message nào bị bỏ.
 - Message chỉ chứa id và ngày, không chứa dữ liệu bài viết hay token.
 

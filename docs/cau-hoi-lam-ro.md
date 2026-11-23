@@ -1,6 +1,6 @@
 # Câu hỏi cần làm rõ
 
-Các điểm đề bài chưa nói rõ. Mỗi câu ghi các phương án và **đề xuất**. **Q1, Q2 đã chốt**; các câu còn lại đang **chưa có câu trả lời**. Tài liệu thiết kế khác (`00`–`03`) đang viết theo đề xuất, chỗ nào phụ thuộc câu trả lời thì ghi số câu (Q…). Có câu trả lời thì cập nhật file này và các tài liệu liên quan.
+Các điểm đề bài chưa nói rõ. Mỗi câu ghi các phương án và **đề xuất**. **Q1, Q2, Q5, Q12 đã chốt**; các câu còn lại đang **chưa có câu trả lời**. Tài liệu thiết kế khác (`00`–`03`) đang viết theo đề xuất, chỗ nào phụ thuộc câu trả lời thì ghi số câu (Q…). Có câu trả lời thì cập nhật file này và các tài liệu liên quan.
 
 Đề bài được nhắc theo tên giai đoạn ("Khởi tạo project", "Unit Test + Import/Export Excel", "Bảo mật & CSRF + Social Login", "Background Job & MultiThread", "JMS & Queue Handling", "WebSocket + Chart Visualization", "Spring WebService + Reflection nâng cao + Tổng kết").
 
@@ -56,7 +56,7 @@ Ví dụ: 9:00 import file, bảng được tính lại. 10:00 job lấy đượ
 - (a) Chỉ tính lại sau import (đúng chữ của giai đoạn JMS). Biểu đồ không đổi khi job chạy.
 - (b) Tính lại sau import, sau mỗi lần chạy job, và sau khi sửa/xóa bài hoặc snapshot qua API. Cả ba gửi message vào cùng một queue, cùng một listener tính lại các ngày bị ảnh hưởng.
 
-**Đề xuất: (b)**, để khớp với giai đoạn "WebSocket + Chart Visualization". Message import vẫn là `IMPORT_COMPLETED` như đề; job gửi `METRICS_UPDATED`, API gửi `METRICS_CHANGED`. Cách tính từng ô của bảng: xem Q12.
+**Đã chốt: (b)**, để khớp với giai đoạn "WebSocket + Chart Visualization". Message import vẫn là `IMPORT_COMPLETED` như đề; job gửi `METRICS_UPDATED`, API gửi `METRICS_CHANGED`. Cách tính từng ô của bảng: xem Q12.
 
 ## Q6. Job cập nhật số liệu
 
@@ -114,18 +114,18 @@ Ví dụ: Facebook có hai bài A và B.
 | Snapshot của A | 100 likes | không có (job lỗi) | 120 likes |
 | Snapshot của B | 50 likes | 60 likes | 70 likes |
 
-Thiết kế hiện tại (`01-thiet-ke-csdl.md`) tính mỗi ngày từ **snapshot trong ngày đó**, nên tổng likes Facebook ngày 2 = 60 (chỉ có B), biểu đồ vẽ 150 → 60 → 190: như thể A mất hết likes rồi lấy lại. Cả nền tảng không có snapshot nào trong ngày thì còn tệ hơn: issue #13 ghi trả về 0, biểu đồ rơi về 0.
+Nếu mỗi ngày chỉ tính từ **snapshot trong ngày đó** (thiết kế ban đầu) thì tổng likes Facebook ngày 2 = 60 (chỉ có B), biểu đồ vẽ 150 → 60 → 190: như thể A mất hết likes rồi lấy lại. Cả nền tảng không có snapshot nào trong ngày thì còn tệ hơn: issue #13 ghi trả về 0, biểu đồ rơi về 0.
 
-- (a) Giữ cách tính hiện tại; ngày không có dòng nào vẽ 0 (đúng chữ issue #13). Biểu đồ trên: 150 → 60 → 190.
-- (b) Giữ cách tính hiện tại; ngày không có dòng nào trả `null`, Chart.js vẽ đứt đoạn. Không sửa được ngày 2 ở ví dụ trên (chỉ thiếu A, không thiếu cả ngày).
+- (a) Chỉ tính snapshot trong ngày; ngày không có dòng nào vẽ 0 (đúng chữ issue #13). Biểu đồ trên: 150 → 60 → 190.
+- (b) Chỉ tính snapshot trong ngày; ngày không có dòng nào trả `null`, Chart.js vẽ đứt đoạn. Không sửa được ngày 2 ở ví dụ trên (chỉ thiếu A, không thiếu cả ngày).
 - (c) Đổi cách tính: mỗi bài lấy **snapshot mới nhất tính đến hết ngày đó** (không cần nằm trong ngày). Ngày 2 lấy A = 100 (của ngày 1), tổng = 160; biểu đồ 150 → 160 → 190. Followers cũng vậy, theo tài khoản. Bài chưa có snapshot nào thì chưa được tính, đúng là 0.
 
-**Đề xuất: (c).** Đúng bản chất số tích lũy, và xử lý được cả hai trường hợp: thiếu một vài bài lẫn thiếu cả ngày.
+**Đã chốt: (c).** Đúng bản chất số tích lũy, và xử lý được cả hai trường hợp: thiếu một vài bài lẫn thiếu cả ngày.
 - Ngày không có dòng nào trong bảng (app tắt cả ngày) thì không có snapshot mới, nên giá trị đúng bằng dòng gần nhất trước đó; `/chart-data` lấy dòng đó, không vẽ 0.
 - Thêm cột `posts_measured`: số bài có snapshot trong chính ngày đó, để biết ngày nào đo thiếu.
 - Đổi lại, sửa/xóa một snapshot ngày `D` thì mọi ngày từ `D` tới hôm nay đều phải tính lại. Import và job luôn ghi snapshot "bây giờ", nên thường chỉ tính lại hôm nay; chỉ sửa snapshot cũ qua API mới phải tính nhiều ngày.
 
-Chọn (c) thì cập nhật định nghĩa `daily_platform_stats` ở `01-thiet-ke-csdl.md` và bỏ câu "trả về 0" ở issue #13.
+Đã cập nhật định nghĩa `daily_platform_stats` ở `01-thiet-ke-csdl.md`, `/chart-data` ở `02-thiet-ke-api.md` và issue #13.
 
 ## Cần báo mentor
 
