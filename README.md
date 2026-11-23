@@ -69,9 +69,17 @@ Schema thay đổi bằng cách thêm file migration mới (`V2__...sql`), khôn
 ## Test
 
 ```bash
-./mvnw test
+./mvnw test      # chạy test
+./mvnw verify    # chạy test + báo cáo coverage JaCoCo ở target/site/jacoco/index.html
 ```
 
-Test chạy trên MySQL 8.4 thật qua Testcontainers nên cần Docker đang chạy (không cần `docker compose up`). Một container dùng chung cho cả lượt test.
+| Loại | Ở đâu | Cách test |
+|---|---|---|
+| Unit test service | `service/*ServiceTests` | JUnit 5 + Mockito, repository được mock; không cần Spring hay DB |
+| Test controller | `controller/*ControllerTests` | `@WebMvcTest` + MockMvc, service là `@MockitoBean`: binding tham số, validation, status, format lỗi |
+| Test repository | `repository/*RepositoryTests` | `@DataJpaTest` trên MySQL thật, mỗi test rollback: query tự viết, ràng buộc của schema |
+| Test API đầy đủ | `controller/*ApiTests` | `@SpringBootTest` + MockMvc trên MySQL thật, không rollback (mỗi request commit như production); gồm cả test hai request chen nhau |
+
+Test dùng DB chạy trên MySQL 8.4 thật qua Testcontainers nên cần Docker đang chạy (không cần `docker compose up`). Một container dùng chung cho cả lượt test. JaCoCo chỉ báo cáo, chưa đặt ngưỡng coverage tối thiểu.
 
 CI (`.github/workflows/ci.yml`) chạy `./mvnw -B verify` trên GitHub Actions cho mọi PR (kể cả PR có base là nhánh feature) và mỗi lần push lên `main`. Test lỗi thì tải `surefire-reports` ở mục Artifacts của lượt chạy.

@@ -19,6 +19,7 @@
     <properties>
         <java.version>21</java.version>
         <springdoc.version>3.2.0</springdoc.version>
+        <jacoco.version>0.8.16</jacoco.version>
         <argLine/>
     </properties>
 
@@ -124,6 +125,28 @@
                     <execution>
                         <goals>
                             <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Coverage: prepare-agent adds the JaCoCo agent to argLine (used by surefire below);
+                 report writes target/site/jacoco/index.html at the verify phase. No threshold enforced. -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
                         </goals>
                     </execution>
                 </executions>
