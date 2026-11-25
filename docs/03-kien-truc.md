@@ -64,7 +64,7 @@ src/main/resources
 |---|---|---|---|---|
 | API | `/api/**` | Session sau OAuth2 Login; quyền theo bảng ở `02-thiet-ke-api.md` | Bật, xem "Nguồn CSRF token" bên dưới | 401/403 JSON (`ProblemDetail` + `code`) |
 | SOAP | `/soap/**` | `permitAll` (dịch vụ giả lập, chỉ đọc) | Tắt (không dùng cookie/session) | |
-| Web + còn lại | mọi path khác | `permitAll`: `/login`, `/oauth2/**`, `/login/oauth2/**`, `/css/**`, `/js/**`, `/actuator/health`, `/error`, Swagger (`/swagger-ui/**`, `/v3/api-docs/**`, chỉ khi profile `dev` bật springdoc). Cần đăng nhập: `/`, `/dashboard`, `/ws/**`. **`denyAll` mọi path còn lại** | Bật | Chuyển về `/login` |
+| Web + còn lại | mọi path khác | `permitAll`: `/login`, `/oauth2/**`, `/login/oauth2/**`, `/css/**`, `/js/**`, `/actuator/health`, `/error`, Swagger (`/swagger-ui/**`, `/v3/api-docs/**`, chỉ khi profile `dev` bật springdoc). Cần đăng nhập: `/`, `/dashboard`, `/ws/**`. **`denyAll` mọi path còn lại** | Bật, trừ `/ws/**` (xem "WebSocket" bên dưới) | Chuyển về `/login` |
 
 - Chain cuối không có `securityMatcher` và có `denyAll` để path không ai khai báo không bị mở ngầm (reviewer repo cũ đã nhắc).
 - **Role** (đã chốt, Q1): `SocialOAuth2UserService` lưu/cập nhật `users` theo `(provider, provider_user_id)` mỗi lần login, gán `ROLE_ADMIN` nếu tài khoản có trong `APP_ADMIN_ACCOUNTS`, còn lại `ROLE_USER`. API ghi dữ liệu dùng `hasRole('ADMIN')`.
@@ -77,6 +77,9 @@ src/main/resources
   - **STOMP `CONNECT`**: token lấy từ thẻ meta do Thymeleaf render (giá trị đã mask), gửi trong header của frame `CONNECT`. Interceptor CSRF cho WebSocket của Spring Security 7 cần dạng nào: **kiểm tra khi làm #13**.
 - **Upload multipart và CSRF**: form import gửi bằng `fetch` kèm header CSRF như mọi lời gọi API. Không dùng `_csrf` trong body multipart, vì Spring Security chỉ đọc được tham số đó nếu multipart được parse trước filter bảo mật.
 - **WebSocket**: handshake `/ws/**` đi qua chain web (cần đăng nhập); frame `CONNECT` kiểm tra CSRF như trên.
+  - Chain web bỏ kiểm tra CSRF ở tầng HTTP **chỉ cho `/ws/**`** (`csrf.ignoringRequestMatchers("/ws/**")`). Khi mạng hay reverse proxy không cho WebSocket, SockJS chuyển sang transport HTTP (XHR, gửi frame bằng POST), mà SockJS không cho gắn header hay tham số CSRF vào các POST đó, nên bật CSRF ở đây thì mọi POST tới `/ws/**` bị 403 và biểu đồ không tự cập nhật. Tài liệu Spring Security (mục "SockJS & Relaxing CSRF") hướng dẫn đúng cách này.
+  - Vẫn an toàn vì token CSRF được kiểm ở frame `CONNECT` của STOMP: không có token đúng thì không kết nối được. Mọi URL khác vẫn bật CSRF.
+  - Cùng mục đó: `headers.frameOptions(sameOrigin)` để transport iframe của SockJS chạy được (mặc định Spring Security chặn mọi iframe).
 - **Login khi dev/demo** (đã chốt, Q2): profile `dev` thêm form login với tài khoản demo đọc từ `.env`; không có ở profile khác.
 - `GlobalExceptionHandler` hiện có handler `Exception` chung: phải thêm handler cho `AccessDeniedException`/`AuthenticationException` trả 403/401 cùng format, nếu không chúng thành 500 (đã ghi ở `02-thiet-ke-api.md`).
 
