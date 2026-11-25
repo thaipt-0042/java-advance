@@ -115,12 +115,13 @@ Phần này là **thiết kế, chưa có migration**. Số version (`V2`, `V3`,
 | Bảng | Issue thêm | Giai đoạn của đề cần nó | Vì sao cần bảng riêng |
 |---|---|---|---|
 | `oauth2_authorized_client` | #9 | Bảo mật & Social Login: "Lưu token truy cập và thông tin user" | Thông tin user đã ở `users`; token truy cập lưu theo schema chuẩn của Spring Security thay vì tự thêm cột vào `users` |
+| `SPRING_SESSION`, `SPRING_SESSION_ATTRIBUTES` | #9 | Bảo mật & Social Login: OAuth2 Login, lưu session | Session đăng nhập (kể cả `state` của lượt chuyển sang Facebook/X) lưu trên MySQL bằng Spring Session JDBC: restart/deploy không đăng xuất mọi người, nhiều instance dùng chung session |
 | `import_batches` | #6 | Unit Test + Import/Export Excel; JMS: "import Excel → publish `IMPORT_COMPLETED`" | Mỗi lần import có một id để message JMS tham chiếu, và lưu lại ai import, kết quả ra sao |
 | `metric_update_runs` | #10 | Background Job: "Thêm màn hình Last updated time" | Lưu thời điểm và trạng thái từng lần chạy job (kể cả lần lỗi); `MAX(captured_at)` không cho biết lần chạy gần nhất có lỗi hay không |
 | `shedlock` | #10 | Background Job: "Job chạy mỗi 1 giờ" | Khóa chống chạy chồng job dùng chung giữa các instance (ShedLock); cờ trong bộ nhớ chỉ chặn trong một instance |
 | `daily_platform_stats` | #12 | JMS: "Listener nhận message → cập nhật thống kê tổng hợp"; WebSocket: "`/chart-data` trả dữ liệu tổng hợp" | Đề yêu cầu cập nhật thống kê tổng hợp bất đồng bộ, nên cần nơi lưu kết quả tổng hợp; biểu đồ đọc bảng nhỏ này thay vì quét toàn bộ snapshot |
 
-Không thêm bảng cho: session đăng nhập (giữ trong bộ nhớ, chạy một instance, xem `docs/03-kien-truc.md`), tài khoản mạng xã hội được theo dõi (`social_accounts`, xem quyết định 2 ở trên: chỉ tách khi cần lịch sử follower độc lập với bài viết), tỷ giá SOAP (gọi khi cần, cache trong bộ nhớ).
+Không thêm bảng cho: tài khoản mạng xã hội được theo dõi (`social_accounts`, xem quyết định 2 ở trên: chỉ tách khi cần lịch sử follower độc lập với bài viết), tỷ giá SOAP (gọi khi cần, cache trong bộ nhớ).
 
 ### Sơ đồ sau khi đủ các bảng
 
@@ -162,7 +163,7 @@ erDiagram
     }
 ```
 
-`daily_platform_stats` không có FK: nó là dữ liệu dẫn xuất, tính lại được hoàn toàn từ `posts` + `social_metrics`. `shedlock` không nối với bảng nào nên không vẽ trong sơ đồ.
+`daily_platform_stats` không có FK: nó là dữ liệu dẫn xuất, tính lại được hoàn toàn từ `posts` + `social_metrics`. `shedlock` và hai bảng session không nối với bảng của app nên không vẽ trong sơ đồ.
 
 ### `oauth2_authorized_client` (#9)
 
@@ -218,6 +219,18 @@ Một dòng cho mỗi lần import **thành công**. Đề xuất import theo ki
 - "Last updated time" (#11) = `finished_at` của lần chạy `SUCCEEDED`/`PARTIAL` gần nhất; trang hiển thị thêm trạng thái của lần chạy gần nhất (kể cả `FAILED`).
 - Mọi snapshot của một lần chạy dùng chung `captured_at = started_at`. Hai lần chạy (định kỳ và chạy tay) có `started_at` khác nhau đến micro giây, nên không đụng `UNIQUE (post_id, captured_at)`. Followers của cùng tài khoản trong một lần chạy có chung `captured_at`, đúng với cách tổng hợp ở quyết định 2.
 - App chết khi đang chạy job thì dòng `RUNNING` bị bỏ dở. Lần chạy sau, **ngay sau khi lấy được khóa `shedlock`** và trước khi tạo run mới, đánh dấu các dòng đó `FAILED` ("bị ngắt"), để màn hình không báo "đang chạy" mãi. Không dọn lúc khởi động app: khi chạy nhiều instance, lúc đó instance khác có thể đang chạy job và dòng `RUNNING` của nó bị đánh nhầm; còn lúc đang giữ khóa thì chắc chắn không ai khác đang chạy.
+
+### `SPRING_SESSION`, `SPRING_SESSION_ATTRIBUTES` (#9)
+
+Bảng của Spring Session JDBC (`spring-boot-starter-session-jdbc`). Migration chép nguyên `org/springframework/session/jdbc/schema-mysql.sql` trong jar `spring-session-jdbc` đang dùng (4.1.2 với Boot 4.1.3), không tự viết lại, vì `JdbcIndexedSessionRepository` đọc/ghi đúng tên bảng và cột. Tắt việc Spring Session tự tạo bảng (`spring.session.jdbc.initialize-schema=never`) để Flyway là nơi duy nhất đổi schema.
+
+| Bảng | Cột chính | Ghi chú |
+|---|---|---|
+| `SPRING_SESSION` | `PRIMARY_ID` CHAR(36) PK, `SESSION_ID` CHAR(36) UNIQUE, `CREATION_TIME`, `LAST_ACCESS_TIME`, `EXPIRY_TIME` (BIGINT, epoch millis), `MAX_INACTIVE_INTERVAL`, `PRINCIPAL_NAME` | INDEX `EXPIRY_TIME` để dọn session hết hạn |
+| `SPRING_SESSION_ATTRIBUTES` | `(SESSION_PRIMARY_ID, ATTRIBUTE_NAME)` PK, `ATTRIBUTE_BYTES` BLOB | FK tới `SPRING_SESSION` `ON DELETE CASCADE`; thuộc tính session (SecurityContext, yêu cầu OAuth2 đang chờ) được serialize |
+
+- Tên bảng viết hoa như schema gốc; MySQL trên Linux phân biệt hoa thường ở tên bảng, nên giữ đúng như vậy.
+- Spring Session tự xóa session hết hạn theo lịch (`spring.session.jdbc.cleanup-cron`, mặc định mỗi phút).
 
 ### `shedlock` (#10)
 

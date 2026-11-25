@@ -58,7 +58,7 @@ src/main/resources
 
 ## 3. Bảo mật (#8, #9)
 
-Đăng nhập chỉ bằng OAuth2 (Facebook, X), lưu session; CSRF bật (**đề yêu cầu**). Đề xuất các `SecurityFilterChain`:
+Đăng nhập chỉ bằng OAuth2 (Facebook, X), lưu session trên MySQL (Spring Session JDBC, xem dưới); CSRF bật (**đề yêu cầu**). Đề xuất các `SecurityFilterChain`:
 
 | Chain | Áp dụng | Xác thực / phân quyền | CSRF | Khi lỗi |
 |---|---|---|---|---|
@@ -69,6 +69,7 @@ src/main/resources
 - Chain cuối không có `securityMatcher` và có `denyAll` để path không ai khai báo không bị mở ngầm (reviewer repo cũ đã nhắc).
 - **Role** (đã chốt, Q1): `SocialOAuth2UserService` lưu/cập nhật `users` theo `(provider, provider_user_id)` mỗi lần login, gán `ROLE_ADMIN` nếu tài khoản có trong `APP_ADMIN_ACCOUNTS`, còn lại `ROLE_USER`. API ghi dữ liệu dùng `hasRole('ADMIN')`.
 - **Thông tin user từ provider**: Facebook trả user ở dạng phẳng; X (API v2) bọc user trong trường `data`, nên cần đổi lại trước khi đọc id/tên. Endpoint, scope và việc X yêu cầu PKCE: **kiểm tra khi làm #9**.
+- **Session**: `spring-boot-starter-session-jdbc`, bảng `SPRING_SESSION*` tạo bằng migration (`01-thiet-ke-csdl.md`). Session của `oauth2Login`, gồm cả `state` của lượt chuyển sang Facebook/X, nằm trên MySQL thay vì bộ nhớ Tomcat, nên restart hay deploy không đăng xuất mọi người, và khi chạy nhiều instance thì lượt quay về từ Facebook/X rơi vào instance nào cũng đọc được `state`. Đánh đổi: cookie đổi tên từ `JSESSIONID` thành `SESSION`, mỗi request có session thêm một SELECT và một UPDATE.
 - **Token**: lưu qua `JdbcOAuth2AuthorizedClientService` (bảng `oauth2_authorized_client`); không log, không trả ra API (Q8 về mã hóa).
 - **Nguồn CSRF token** (**đề yêu cầu** "CSRF token và form submission"). Từ Spring Security 6, token đưa ra trang mặc định được "mask" (mỗi lần một giá trị khác, chống tấn công BREACH, `XorCsrfTokenRequestAttributeHandler`). Mỗi loại client lấy token ở một chỗ:
   - **Form Thymeleaf** (submit thường): trường ẩn `_csrf` do Thymeleaf tự chèn. Có ít nhất hai form thật: đăng xuất (`POST /logout`) và nút "Chạy job ngay" (`POST /dashboard/update-metrics`, issue #11).
@@ -155,7 +156,7 @@ sequenceDiagram
 
 - Docker Compose: `mysql` (đã có), thêm `artemis` (#12) và `app` (`Dockerfile`, #17).
 - Biến môi trường mới (thêm vào `.env.example` ở từng issue): `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET`, `TWITTER_CLIENT_ID`, `TWITTER_CLIENT_SECRET`, `APP_ADMIN_ACCOUNTS` (#9); `METRICS_JOB_CRON`, kích thước thread pool (#10); `ARTEMIS_*` (#12); `APP_EXCHANGE_RATE_URL` (#15). Giá trị bí mật không commit.
-- **Một instance**: session đăng nhập và broker WebSocket đều trong bộ nhớ. Chạy nhiều instance cần: Spring Session (JDBC/Redis), broker STOMP ngoài. Khóa chống chạy chồng job đã nằm trên MySQL (ShedLock) nên không bị giới hạn này. Ngoài phạm vi đề, ghi lại để biết giới hạn.
+- **Một instance cho WebSocket**: broker STOMP là simple broker trong bộ nhớ, event phát ở instance nào chỉ tới client nối vào instance đó. Chạy nhiều instance cần broker STOMP ngoài; ngoài phạm vi đề, ghi lại để biết giới hạn. Session (Spring Session JDBC) và khóa chống chạy chồng job (ShedLock) đã nằm trên MySQL nên không bị giới hạn này.
 
 ## 10. Quy ước đã áp dụng từ #2–#4 (giữ cho các issue sau)
 

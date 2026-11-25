@@ -168,5 +168,5 @@ sequenceDiagram
 
 - Gọi API thật của Facebook/X để lấy số liệu (đề ghi "mock API").
 - Gộp tài khoản Facebook và X của cùng một người.
-- Chạy nhiều instance: session và broker WebSocket đều trong bộ nhớ của một instance (xem `03-kien-truc.md`). Khóa chống chạy chồng job nằm trên MySQL nên vẫn đúng khi chạy nhiều instance.
+- Chạy nhiều instance: broker WebSocket nằm trong bộ nhớ của một instance (xem `03-kien-truc.md`). Session và khóa chống chạy chồng job nằm trên MySQL nên vẫn đúng khi chạy nhiều instance.
 - ReactJS (đề cho chọn, chọn Thymeleaf, Q9).
