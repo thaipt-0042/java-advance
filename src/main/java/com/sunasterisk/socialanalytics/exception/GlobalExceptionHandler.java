@@ -26,7 +26,10 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  * <ul>
  *   <li>Framework errors (400 bad JSON / wrong type, 404 unknown path, 405, 415, ...) keep their status through
  *       {@link ResponseEntityExceptionHandler}; {@code code} is the status name, e.g. {@code METHOD_NOT_ALLOWED}.</li>
- *   <li>Bean Validation failures: 422 {@code VALIDATION}.</li>
+ *   <li>Bean Validation failures: 422 {@code VALIDATION}, {@code errors} as {@code [{field, message}]}.</li>
+ *   <li>{@link RowValidationException} (rows of an uploaded file): 422 {@code VALIDATION}, {@code errors} as
+ *       {@code [{row, column, message}]}.</li>
+ *   <li>{@link InvalidFileException}: 400 {@code BAD_REQUEST}.</li>
  *   <li>{@link ResourceNotFoundException}: 404 {@code NOT_FOUND}.</li>
  *   <li>{@link ConflictException} and {@link DataIntegrityViolationException}: 409 {@code CONFLICT}.</li>
  *   <li>Anything else: 500 {@code INTERNAL_ERROR}, details only in the log.</li>
@@ -49,6 +52,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 .toList();
         body.setProperty("errors", errors);
         return handleExceptionInternal(ex, body, headers, HttpStatus.UNPROCESSABLE_CONTENT, request);
+    }
+
+    @ExceptionHandler(RowValidationException.class)
+    ResponseEntity<Object> handleRowValidation(RowValidationException ex, WebRequest request) {
+        ProblemDetail body = problem(HttpStatus.UNPROCESSABLE_CONTENT, "VALIDATION", ex.getMessage());
+        body.setProperty("errors", ex.getErrors());
+        return handleExceptionInternal(ex, body, new HttpHeaders(), HttpStatus.UNPROCESSABLE_CONTENT, request);
+    }
+
+    @ExceptionHandler(InvalidFileException.class)
+    ResponseEntity<Object> handleInvalidFile(InvalidFileException ex, WebRequest request) {
+        return respond(ex, HttpStatus.BAD_REQUEST, "BAD_REQUEST", ex.getMessage(), request);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)

@@ -2,11 +2,14 @@ package com.sunasterisk.socialanalytics.controller;
 
 import static org.assertj.core.api.Assertions.fail;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.sunasterisk.socialanalytics.support.Xlsx;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -22,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -30,7 +34,8 @@ import org.testcontainers.mysql.MySQLContainer;
 /**
  * A row deleted by another transaction between the moment a request reads it and the moment it writes must give
  * 404, not a 500 from Hibernate ("unexpected row count"). Each test deletes the row in an open transaction, starts
- * the request, waits until MySQL reports the request blocked on that row's lock, then commits.
+ * the request, waits until MySQL reports the request blocked on that row's lock, then commits. One import test
+ * inserts the row that way instead.
  */
 class ConcurrentDeleteApiTests extends ApiTestBase {
 
@@ -104,12 +109,47 @@ class ConcurrentDeleteApiTests extends ApiTestBase {
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
 
-    private ResultActions performWhileUncommitted(String deleteSql, long id, Callable<ResultActions> request)
+    @Test
+    void importingPostThatIsBeingDeletedCreatesItAgain() throws Exception {
+        String externalId = "ci-" + token();
+        long id = createPost("FACEBOOK", externalId, "page", "c");
+        byte[] file = Xlsx.of(Xlsx.POST_HEADER, Xlsx.row("FACEBOOK", externalId, "renamed"));
+
+        // Without the row lock the import reads the post, then its UPDATE matches 0 rows: 500.
+        performWhileUncommitted("delete from posts where id = ?", id,
+                () -> mockMvc.perform(multipart("/api/v1/import-posts").file(new MockMultipartFile("file",
+                        "posts.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", file))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdPosts").value(1))
+                .andExpect(jsonPath("$.updatedPosts").value(0));
+    }
+
+    @Test
+    void importingPostThatIsBeingCreatedUpdatesItOnceCommitted() throws Exception {
+        String externalId = "cc-" + token();
+        byte[] file = Xlsx.of(Xlsx.POST_HEADER, Xlsx.row("FACEBOOK", externalId, "page-" + externalId));
+
+        // The locking read waits for the uncommitted insert, then sees the committed post and updates it instead of
+        // failing on the UNIQUE constraint.
+        performWhileUncommitted("""
+                        insert into posts (platform, external_id, account_name, created_at, updated_at)
+                        values ('FACEBOOK', ?, 'other', now(6), now(6))
+                        """, externalId,
+                () -> mockMvc.perform(multipart("/api/v1/import-posts").file(new MockMultipartFile("file",
+                        "posts.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", file))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdPosts").value(0))
+                .andExpect(jsonPath("$.updatedPosts").value(1));
+        mockMvc.perform(get("/api/v1/posts").param("q", "page-" + externalId))
+                .andExpect(jsonPath("$.content[0].externalId").value(externalId));
+    }
+
+    private ResultActions performWhileUncommitted(String sql, Object param, Callable<ResultActions> request)
             throws Exception {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             Future<ResultActions> response = new TransactionTemplate(transactionManager).execute(tx -> {
-                jdbcTemplate.update(deleteSql, id);
+                jdbcTemplate.update(sql, param);
                 Future<ResultActions> pending = executor.submit(request);
                 awaitBlockedOnRowLock(pending);
                 return pending;
