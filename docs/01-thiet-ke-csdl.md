@@ -207,9 +207,9 @@ Một dòng cho mỗi lần import **thành công**. Đề xuất import theo ki
 
 | Cột | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
-| `trigger_type` | VARCHAR(20) | NOT NULL, CHECK `SCHEDULED`/`MANUAL` | enum `RunTrigger` |
+| `trigger_type` | VARCHAR(20) | NOT NULL, CHECK `SCHEDULED`/`MANUAL`, collation `utf8mb4_0900_bin` | enum `RunTrigger` |
 | `triggered_by` | BIGINT | NULL, FK → `users.id` `ON DELETE SET NULL` | chỉ có khi chạy tay |
-| `status` | VARCHAR(20) | NOT NULL, CHECK `RUNNING`/`SUCCEEDED`/`PARTIAL`/`FAILED` | `PARTIAL`: một số tài khoản lỗi |
+| `status` | VARCHAR(20) | NOT NULL, CHECK `RUNNING`/`SUCCEEDED`/`PARTIAL`/`FAILED`, collation `utf8mb4_0900_bin` | enum `RunStatus`; `PARTIAL`: một số tài khoản lỗi |
 | `started_at` | DATETIME(6) | NOT NULL | cũng là `captured_at` của mọi snapshot tạo ra trong lần chạy |
 | `finished_at` | DATETIME(6) | NULL, CHECK `finished_at >= started_at` | NULL khi đang chạy |
 | `accounts_total`, `accounts_failed`, `snapshots_created` | INT | NOT NULL, mặc định 0, CHECK `>= 0` | |
@@ -252,7 +252,7 @@ Một dòng cho mỗi **ngày theo giờ Việt Nam** và mỗi nền tảng. S�
 | Cột | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
 | `stat_date` | DATE | PK | ngày theo `Asia/Ho_Chi_Minh` |
-| `platform` | VARCHAR(20) | PK, CHECK `FACEBOOK`/`TWITTER` | |
+| `platform` | VARCHAR(20) | PK, CHECK `FACEBOOK`/`TWITTER`, collation `utf8mb4_0900_bin` | |
 | `posts_tracked` | INT | NOT NULL, CHECK `>= 0` | số bài có ít nhất một snapshot tính đến hết ngày |
 | `posts_measured` | INT | NOT NULL, CHECK `>= 0` | số bài có snapshot **trong chính ngày đó**; nhỏ hơn `posts_tracked` nghĩa là ngày đó đo thiếu (job lỗi một phần) |
 | `likes`, `shares`, `comments` | BIGINT | NOT NULL, CHECK `>= 0` | tổng theo bài, mỗi bài lấy snapshot **mới nhất tính đến hết ngày** |

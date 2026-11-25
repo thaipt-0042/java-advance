@@ -164,8 +164,9 @@ sequenceDiagram
 ## 10. Quy ước đã áp dụng từ #2–#4 (giữ cho các issue sau)
 
 - Thời gian: lưu UTC `DATETIME(6)`, cắt về micro giây (`DbTime`); "hôm nay" và ranh giới ngày qua bean `Clock` (`Asia/Ho_Chi_Minh`).
+- Cột enum: VARCHAR + CHECK với collation `utf8mb4_0900_bin`, để CHECK phân biệt hoa thường như `Enum.valueOf`.
 - Lỗi: `ProblemDetail` + `code`, `GlobalExceptionHandler` kế thừa `ResponseEntityExceptionHandler`; 409 cho lỗi ràng buộc kèm `log.warn`.
-- Ghi đồng thời: sửa thì khóa dòng ngay lần đọc đầu, xóa bằng một câu `DELETE` kiểm tra số dòng; có test hai luồng.
+- Ghi đồng thời: sửa thì khóa dòng ngay lần đọc đầu và so `updatedAt` client đã đọc (khác thì 409), xóa bằng một câu `DELETE` kiểm tra số dòng; có test hai luồng.
 - Tìm kiếm `LIKE` escape `%`, `_` (`LikePatterns`).
 - Seed dữ liệu chỉ ở profile `dev`; Swagger chỉ ở profile `dev`.
 - Test chạy trên MySQL thật (Testcontainers), không phụ thuộc thứ tự, nhánh xử lý lỗi đều có test.
