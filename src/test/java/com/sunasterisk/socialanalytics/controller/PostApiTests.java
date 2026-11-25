@@ -106,8 +106,8 @@ class PostApiTests extends ApiTestBase {
         String updated = mockMvc.perform(put("/api/v1/posts/{id}", id).contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"accountName": "new.page", "content": "new", "url": "",
-                                 "publishedAt": "2026-03-01T03:00:00.123456789Z"}
-                                """))
+                                 "publishedAt": "2026-03-01T03:00:00.123456789Z", "updatedAt": "%s"}
+                                """.formatted(updatedAtOf("/api/v1/posts", id))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accountName").value("new.page"))
                 .andExpect(jsonPath("$.content").value("new"))
@@ -124,6 +124,28 @@ class PostApiTests extends ApiTestBase {
     }
 
     @Test
+    void updateWithStaleUpdatedAtReturns409AndKeepsTheEarlierChange() throws Exception {
+        long id = createPost("FACEBOOK", "upd-" + token(), "page", "c");
+        String readByBoth = updatedAtOf("/api/v1/posts", id);
+
+        mockMvc.perform(put("/api/v1/posts/{id}", id).contentType(MediaType.APPLICATION_JSON).content("""
+                        {"accountName": "changed.by.a", "content": "c", "updatedAt": "%s"}
+                        """.formatted(readByBoth)))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/posts/{id}", id).contentType(MediaType.APPLICATION_JSON).content("""
+                        {"accountName": "page", "content": "changed by b", "updatedAt": "%s"}
+                        """.formatted(readByBoth)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"))
+                .andExpect(jsonPath("$.detail")
+                        .value("Bài viết id = %d đã bị sửa sau khi bạn tải, hãy tải lại rồi thử lại".formatted(id)));
+
+        mockMvc.perform(get("/api/v1/posts/{id}", id))
+                .andExpect(jsonPath("$.accountName").value("changed.by.a"))
+                .andExpect(jsonPath("$.content").value("c"));
+    }
+
+    @Test
     void validatesUpdateBodyWith422() throws Exception {
         long id = createPost("FACEBOOK", "upd-" + token(), "page", "c");
 
@@ -131,7 +153,7 @@ class PostApiTests extends ApiTestBase {
                         {"accountName": ""}
                         """))
                 .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.errors[0].field").value("accountName"));
+                .andExpect(jsonPath("$.errors[*].field", containsInAnyOrder("accountName", "updatedAt")));
     }
 
     @Test
@@ -142,7 +164,7 @@ class PostApiTests extends ApiTestBase {
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"))
                 .andExpect(jsonPath("$.instance").value("/api/v1/posts/" + missing));
         mockMvc.perform(put("/api/v1/posts/{id}", missing).contentType(MediaType.APPLICATION_JSON).content("""
-                        {"accountName": "page"}
+                        {"accountName": "page", "updatedAt": "2026-03-01T00:00:00Z"}
                         """))
                 .andExpect(status().isNotFound());
         mockMvc.perform(delete("/api/v1/posts/{id}", missing))

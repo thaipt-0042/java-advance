@@ -72,10 +72,13 @@ public class SocialMetricController {
 
     @PutMapping("/{id}")
     @Operation(summary = "Sửa snapshot",
-            description = "Thay thời điểm đo và các số đếm. Không chuyển snapshot sang bài viết khác được.")
+            description = "Thay thời điểm đo và các số đếm. Không chuyển snapshot sang bài viết khác được. "
+                    + "`updatedAt` là giá trị client đã đọc.")
     @ApiResponse(responseCode = "200", description = "OK")
     @ApiResponse(responseCode = "404", description = "Không có snapshot với id này")
-    @ApiResponse(responseCode = "409", description = "Bài viết đã có snapshot khác tại `capturedAt`")
+    @ApiResponse(responseCode = "409",
+            description = "Snapshot đã bị sửa sau khi client đọc (`updatedAt` khác), "
+                    + "hoặc bài viết đã có snapshot khác tại `capturedAt`")
     @ApiResponse(responseCode = "422", description = "Dữ liệu không hợp lệ")
     public MetricResponse update(@PathVariable Long id, @Valid @RequestBody MetricUpdateRequest request) {
         return metricService.update(id, request);

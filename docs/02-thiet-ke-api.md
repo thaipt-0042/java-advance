@@ -9,17 +9,18 @@ Phạm vi: issue #4 (P1-03). Swagger UI (profile `dev`): http://localhost:8080/s
 | GET | `/api/v1/posts` | Danh sách bài viết, lọc `platform`, `q`; phân trang `page`, `size` | 200 | 422 |
 | GET | `/api/v1/posts/{id}` | Chi tiết | 200 | 404 |
 | POST | `/api/v1/posts` | Thêm bài viết, header `Location` trỏ tới bài mới | 201 | 409, 422 |
-| PUT | `/api/v1/posts/{id}` | Thay các trường sửa được (`accountName`, `url`, `content`, `publishedAt`) | 200 | 404, 422 |
+| PUT | `/api/v1/posts/{id}` | Thay các trường sửa được (`accountName`, `url`, `content`, `publishedAt`), kèm `updatedAt` đã đọc | 200 | 404, 409, 422 |
 | DELETE | `/api/v1/posts/{id}` | Xóa bài viết và mọi snapshot của nó | 204 | 404 |
 | GET | `/api/v1/metrics` | Danh sách snapshot, lọc `postId`, `from`, `to`; phân trang | 200 | 404, 422 |
 | GET | `/api/v1/metrics/{id}` | Chi tiết | 200 | 404 |
 | POST | `/api/v1/metrics` | Thêm snapshot cho bài viết | 201 | 404, 409, 422 |
-| PUT | `/api/v1/metrics/{id}` | Thay `capturedAt` và các số đếm | 200 | 404, 409, 422 |
+| PUT | `/api/v1/metrics/{id}` | Thay `capturedAt` và các số đếm, kèm `updatedAt` đã đọc | 200 | 404, 409, 422 |
 | DELETE | `/api/v1/metrics/{id}` | Xóa snapshot | 204 | 404 |
 
 - Request/response là DTO (`dto/`), không trả entity ra ngoài. Thời gian theo ISO-8601 UTC, ví dụ `2026-03-01T03:00:00Z`.
 - `platform` + `externalId` là định danh của bài viết, `postId` là chủ của snapshot: không sửa được qua PUT. Muốn đổi thì xóa rồi tạo lại.
 - PUT thay toàn bộ các trường sửa được: trường không gửi (`url`, `content`, `publishedAt`) thành `null`.
+- PUT bắt buộc gửi `updatedAt` mà client đọc được từ GET (hoặc từ response của lần sửa trước). Bản ghi đã bị sửa sau đó (`updatedAt` khác) thì trả 409, client tải lại rồi sửa tiếp. Xem mục "Ghi đồng thời".
 
 ### Danh sách và phân trang
 
@@ -38,6 +39,7 @@ Phạm vi: issue #4 (P1-03). Swagger UI (profile `dev`): http://localhost:8080/s
 Hai request cùng lúc trên một dòng không được thành 500:
 
 - **Sửa** (`PUT`) khóa dòng ngay lần đọc đầu tiên (`findByIdForUpdate`, `SELECT ... FOR UPDATE`). Nếu dòng đang bị request khác xóa thì request sửa chờ, rồi không thấy dòng nữa nên trả 404. Không khóa thì câu UPDATE cập nhật 0 dòng, Hibernate ném `ObjectOptimisticLockingFailureException` và trả 500.
+- **Hai người cùng sửa một dòng** (A và B cùng đọc, A lưu trước): khóa chỉ cho hai PUT chạy nối đuôi, nên nếu không kiểm tra thì PUT của B ghi đè thay đổi của A mà không ai biết. Sau khi khóa dòng, service so `updatedAt` trong request với `updatedAt` hiện tại; khác thì trả 409 và không ghi gì. Không cần thêm cột `version`: `updatedAt` đã được cắt về micro giây (xem mục "Thời gian") nên so khớp chính xác.
 - **Xóa** là một câu `DELETE ... WHERE id = ?`, không nạp entity trước; xóa 0 dòng thì trả 404.
 - **Thêm snapshot** đọc bài viết với khóa chia sẻ (`findByIdForShare`, `SELECT ... FOR SHARE`). Bài đang bị xóa thì trả 404, không phải 409 do vi phạm khóa ngoại.
 - **Trùng khóa nghiệp vụ** khi hai request cùng qua bước kiểm tra: ràng buộc UNIQUE chặn request sau, trả 409.
@@ -64,6 +66,7 @@ Mọi lỗi đều trả [`ProblemDetail`](https://www.rfc-editor.org/rfc/rfc945
 | Vi phạm Bean Validation ở body hoặc query (`@NotBlank`, `@Size`, `@PositiveOrZero`, `page`/`size` ngoài khoảng, `from` ≥ `to`, `platform=INSTAGRAM` trong query) | 422 | `VALIDATION` |
 | Id không tồn tại, ở path, query (`postId`) hay body (`postId`) | 404 | `NOT_FOUND` |
 | Trùng khóa nghiệp vụ, kiểm tra trước trong service: báo rõ bị trùng gì | 409 | `CONFLICT` |
+| PUT với `updatedAt` cũ (bản ghi đã bị sửa sau khi client đọc) | 409 | `CONFLICT` |
 | `DataIntegrityViolationException` (hai request chen nhau cùng qua bước kiểm tra, ràng buộc DB chặn request sau): câu chung, `log.warn` kèm exception | 409 | `CONFLICT` |
 | JSON hỏng, sai kiểu, enum lạ trong body (`"platform": "INSTAGRAM"`), id trên path không phải số | 400 | `BAD_REQUEST` |
 | Sai method / sai `Content-Type` / path không tồn tại | 405 / 415 / 404 | `METHOD_NOT_ALLOWED` / `UNSUPPORTED_MEDIA_TYPE` / `NOT_FOUND` |

@@ -67,6 +67,12 @@ public class PostService {
     @Transactional
     public PostResponse update(Long id, PostUpdateRequest request) {
         Post post = postRepository.findByIdForUpdate(id).orElseThrow(() -> notFound(id));
+        // The lock only runs two PUTs one after the other; without this check the later one would silently
+        // overwrite the earlier one's changes. updatedAt has column precision, so it compares exactly.
+        if (!post.getUpdatedAt().equals(DbTime.toColumnPrecision(request.updatedAt()))) {
+            throw new ConflictException(
+                    "Bài viết id = %d đã bị sửa sau khi bạn tải, hãy tải lại rồi thử lại".formatted(id));
+        }
         post.setAccountName(request.accountName().strip());
         post.setUrl(blankToNull(request.url()));
         post.setContent(blankToNull(request.content()));
