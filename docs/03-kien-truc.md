@@ -89,14 +89,14 @@ sequenceDiagram
     participant C as Mock API FB/X
     participant DB as MySQL
     S->>J: updateSocialMetricsJob
-    J->>J: đang chạy? (cờ trong bộ nhớ) → bỏ qua
-    J->>DB: tạo run RUNNING (transaction ngắn)
+    J->>DB: lấy khóa ShedLock metrics-job, không được → bỏ qua
+    J->>DB: dọn run RUNNING bị bỏ dở → FAILED, tạo run RUNNING (transaction ngắn)
     loop mỗi tài khoản (platform, account_name)
         J->>P: tác vụ
         P->>C: lấy số liệu (không giữ connection DB)
         P->>DB: ghi snapshot của tài khoản (transaction ngắn)
     end
-    J->>DB: run SUCCEEDED / PARTIAL / FAILED
+    J->>DB: run SUCCEEDED / PARTIAL / FAILED, trả khóa
     J-->>J: sau commit: gửi METRICS_UPDATED (JMS), JOB_FINISHED (WebSocket)
 ```
 
@@ -109,9 +109,14 @@ sequenceDiagram
   - Luồng chờ (`allOf`) không nằm trong pool chạy tác vụ: nếu cùng một pool, pool đầy thì luồng chờ chiếm chỗ của chính các tác vụ nó đang chờ.
   - Phương thức `@Async` phải ở bean khác với nơi gọi: gọi trong cùng class không đi qua proxy nên chạy đồng bộ.
 - **Lỗi một tài khoản**: tác vụ bắt exception, log kèm `platform`, `account_name`, `runId`, trả kết quả lỗi để đếm vào `accounts_failed`; các tài khoản khác chạy tiếp.
-- **Không chạy chồng**: cờ `AtomicBoolean` trong bộ nhớ (một instance). Lần định kỳ gặp cờ đang bật thì log và bỏ qua; chạy tay thì trả 409. Khởi động lại app: dòng `RUNNING` cũ được đánh dấu `FAILED`.
+- **Không chạy chồng, kể cả khi chạy nhiều instance**: khóa ShedLock tên `metrics-job` trên MySQL sẵn có (`JdbcTemplateLockProvider` với `usingDbTime()`, để các instance so thời gian theo đồng hồ của DB; bảng `shedlock` ở `01-thiet-ke-csdl.md`). Cờ trong bộ nhớ chỉ chặn được trong một instance: hai instance cùng chạy lúc 10:00 sẽ tạo hai snapshot cho mỗi bài và gọi API gấp đôi.
+  - Lần định kỳ: `@SchedulerLock(name = "metrics-job")` trên `UpdateSocialMetricsJob` (`@EnableSchedulerLock`); không lấy được khóa thì ShedLock bỏ qua lần đó.
+  - Chạy tay (#11): gọi `LockProvider.lock(...)` với cùng tên khóa ngay trong request; không lấy được thì trả 409, lấy được thì chuyển khóa cho `JobLauncher` chạy nền và `unlock()` trong `finally` khi run xong. Nhờ vậy bấm "Chạy job ngay" ở instance nào cũng nhận 409 khi job đang chạy ở instance khác.
+  - `lockAtMostFor` dài hơn hạn chờ của `allOf(...)` cộng thời gian chốt run, để khóa không hết hạn khi run còn đang chạy. App chết giữa chừng thì khóa tự hết hạn sau `lockAtMostFor`, lần sau chạy lại được.
+  - Dòng `RUNNING` bị bỏ dở được đánh `FAILED` **ngay sau khi lấy được khóa**, không phải lúc khởi động app: lúc giữ khóa thì chắc chắn không instance nào khác đang chạy job, còn lúc khởi động thì instance khác có thể đang chạy và bị đánh nhầm.
+  - Dùng ShedLock 7.x: compatibility matrix trong README của ShedLock ghi hỗ trợ Spring 7.0 và Spring Boot 4.x. Thêm `shedlock-spring` và `shedlock-provider-jdbc-template`.
 - **`captured_at`**: mọi snapshot của lần chạy dùng `started_at` của run (xem `01-thiet-ke-csdl.md`). Hai lần chạy khác nhau không trùng thời điểm nên không vi phạm `UNIQUE (post_id, captured_at)`.
-- **Test**: client mock trả số cố định, `Clock.fixed`; test riêng trường hợp một tài khoản lỗi, và chạy tay khi job đang chạy (409).
+- **Test**: client mock trả số cố định, `Clock.fixed`; test riêng trường hợp một tài khoản lỗi, chạy tay khi đang giữ khóa (409), và dòng `RUNNING` cũ được đánh `FAILED` khi lấy được khóa.
 
 ## 5. JMS: thống kê tổng hợp (#12)
 
@@ -150,7 +155,7 @@ sequenceDiagram
 
 - Docker Compose: `mysql` (đã có), thêm `artemis` (#12) và `app` (`Dockerfile`, #17).
 - Biến môi trường mới (thêm vào `.env.example` ở từng issue): `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET`, `TWITTER_CLIENT_ID`, `TWITTER_CLIENT_SECRET`, `APP_ADMIN_ACCOUNTS` (#9); `METRICS_JOB_CRON`, kích thước thread pool (#10); `ARTEMIS_*` (#12); `APP_EXCHANGE_RATE_URL` (#15). Giá trị bí mật không commit.
-- **Một instance**: session đăng nhập, cờ chống chạy chồng job và broker WebSocket đều trong bộ nhớ. Chạy nhiều instance cần: Spring Session (JDBC/Redis), khóa phân tán cho job (ví dụ ShedLock), broker STOMP ngoài. Ngoài phạm vi đề, ghi lại để biết giới hạn.
+- **Một instance**: session đăng nhập và broker WebSocket đều trong bộ nhớ. Chạy nhiều instance cần: Spring Session (JDBC/Redis), broker STOMP ngoài. Khóa chống chạy chồng job đã nằm trên MySQL (ShedLock) nên không bị giới hạn này. Ngoài phạm vi đề, ghi lại để biết giới hạn.
 
 ## 10. Quy ước đã áp dụng từ #2–#4 (giữ cho các issue sau)
 

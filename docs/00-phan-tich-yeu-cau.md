@@ -139,7 +139,7 @@ sequenceDiagram
 
 ### 6.3. Job mỗi giờ
 
-1. Đến giờ (cron đọc từ cấu hình, theo giờ Việt Nam), job tạo một dòng `metric_update_runs` trạng thái `RUNNING`. Lần chạy trước chưa xong thì bỏ qua lần này.
+1. Đến giờ (cron đọc từ cấu hình, theo giờ Việt Nam), job lấy khóa `metrics-job` (ShedLock trên MySQL, dùng chung giữa các instance) rồi tạo một dòng `metric_update_runs` trạng thái `RUNNING`. Lần chạy trước chưa xong (khóa đang bị giữ) thì bỏ qua lần này.
 2. Lấy danh sách tài khoản `(platform, account_name)`, mỗi tài khoản là một tác vụ trên `ThreadPoolTaskExecutor`.
 3. Mỗi tác vụ gọi API giả lập (không giữ transaction/connection DB khi chờ), rồi ghi snapshot của tài khoản đó trong một transaction ngắn. Lỗi ở một tài khoản chỉ được log và đếm, không làm dừng các tài khoản khác.
 4. Hết các tác vụ: cập nhật dòng `metric_update_runs` (`SUCCEEDED`/`PARTIAL`/`FAILED`), gửi `METRICS_UPDATED` vào queue (đã chốt, Q5) và event WebSocket `JOB_FINISHED`.
@@ -168,5 +168,5 @@ sequenceDiagram
 
 - Gọi API thật của Facebook/X để lấy số liệu (đề ghi "mock API").
 - Gộp tài khoản Facebook và X của cùng một người.
-- Chạy nhiều instance: session, khóa chống chạy chồng job và broker WebSocket đều trong bộ nhớ của một instance (xem `03-kien-truc.md`).
+- Chạy nhiều instance: session và broker WebSocket đều trong bộ nhớ của một instance (xem `03-kien-truc.md`). Khóa chống chạy chồng job nằm trên MySQL nên vẫn đúng khi chạy nhiều instance.
 - ReactJS (đề cho chọn, chọn Thymeleaf, Q9).
