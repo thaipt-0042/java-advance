@@ -167,12 +167,23 @@ class PostControllerTests {
         when(postService.update(eq(7L), any())).thenReturn(sample(7L));
 
         mockMvc.perform(put("/api/v1/posts/7").contentType(MediaType.APPLICATION_JSON).content("""
-                        {"accountName": "sun.asterisk", "content": "Xin chào"}
+                        {"accountName": "sun.asterisk", "content": "Xin chào", "updatedAt": "2026-03-01T03:00:00Z"}
                         """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(7));
 
-        verify(postService).update(7L, new PostUpdateRequest("sun.asterisk", null, "Xin chào", null));
+        verify(postService).update(7L, new PostUpdateRequest("sun.asterisk", null, "Xin chào", null, CREATED));
+    }
+
+    @Test
+    void updateWithoutUpdatedAtReturns422WithoutCallingService() throws Exception {
+        mockMvc.perform(put("/api/v1/posts/7").contentType(MediaType.APPLICATION_JSON).content("""
+                        {"accountName": "sun.asterisk"}
+                        """))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.errors[0].field").value("updatedAt"));
+
+        verifyNoInteractions(postService);
     }
 
     @Test

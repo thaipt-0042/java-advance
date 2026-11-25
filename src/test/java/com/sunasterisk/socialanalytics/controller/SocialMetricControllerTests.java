@@ -145,12 +145,13 @@ class SocialMetricControllerTests {
                 .thenThrow(new ConflictException("Bài viết id = 5 đã có snapshot tại 2026-03-01T01:00:00Z"));
 
         mockMvc.perform(put("/api/v1/metrics/11").contentType(MediaType.APPLICATION_JSON).content("""
-                        {"capturedAt": "2026-03-01T01:00:00Z", "likes": 1, "shares": 2, "comments": 3, "followers": 4}
+                        {"capturedAt": "2026-03-01T01:00:00Z", "likes": 1, "shares": 2, "comments": 3, "followers": 4,
+                         "updatedAt": "2026-03-01T03:00:00Z"}
                         """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("CONFLICT"));
 
-        verify(metricService).update(11L, new MetricUpdateRequest(CAPTURED, 1L, 2L, 3L, 4L));
+        verify(metricService).update(11L, new MetricUpdateRequest(CAPTURED, 1L, 2L, 3L, 4L, CREATED));
     }
 
     @Test

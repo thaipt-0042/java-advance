@@ -140,7 +140,8 @@ class PostServiceTests {
         when(postRepository.saveAndFlush(post)).thenReturn(post);
 
         PostResponse response = postService.update(7L, new PostUpdateRequest(" new.account ",
-                " https://x.com/p/7 ", " Nội dung mới ", Instant.parse("2026-02-27T00:00:00.000000999Z")));
+                " https://x.com/p/7 ", " Nội dung mới ", Instant.parse("2026-02-27T00:00:00.000000999Z"),
+                UPDATED.plusNanos(999)));
 
         assertThat(response).isEqualTo(new PostResponse(7L, SocialPlatform.FACEBOOK, "ext-7", "new.account",
                 "https://x.com/p/7", "Nội dung mới", Instant.parse("2026-02-27T00:00:00Z"), CREATED, UPDATED));
@@ -151,9 +152,22 @@ class PostServiceTests {
     void updateUnknownIdThrowsNotFoundWithoutSaving() {
         when(postRepository.findByIdForUpdate(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> postService.update(99L, new PostUpdateRequest("a", null, null, null)))
+        assertThatThrownBy(() -> postService.update(99L, new PostUpdateRequest("a", null, null, null, UPDATED)))
                 .isInstanceOf(ResourceNotFoundException.class);
         verify(postRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void updateWithStaleUpdatedAtThrowsConflictWithoutChangingThePost() {
+        Post post = samplePost(7L);
+        when(postRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(post));
+
+        assertThatThrownBy(() -> postService.update(7L,
+                new PostUpdateRequest("other.account", null, null, null, CREATED)))
+                .isInstanceOf(ConflictException.class)
+                .hasMessage("Bài viết id = 7 đã bị sửa sau khi bạn tải, hãy tải lại rồi thử lại");
+        verify(postRepository, never()).saveAndFlush(any());
+        assertThat(post.getAccountName()).isEqualTo("sun.asterisk");
     }
 
     @Test

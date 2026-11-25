@@ -158,7 +158,8 @@ class SocialMetricServiceTests {
         when(metricRepository.saveAndFlush(metric)).thenReturn(metric);
 
         MetricResponse response = metricService.update(11L,
-                new MetricUpdateRequest(Instant.parse("2026-03-01T02:00:00.000000500Z"), 200L, 20L, 10L, 5500L));
+                new MetricUpdateRequest(Instant.parse("2026-03-01T02:00:00.000000500Z"), 200L, 20L, 10L, 5500L,
+                        UPDATED.plusNanos(500)));
 
         assertThat(response).isEqualTo(new MetricResponse(11L, 5L, 200, 20, 10, 5500, newTime, CREATED, UPDATED));
     }
@@ -167,7 +168,7 @@ class SocialMetricServiceTests {
     void updateUnknownIdThrowsNotFoundWithoutSaving() {
         when(metricRepository.findByIdForUpdate(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> metricService.update(99L, new MetricUpdateRequest(FROM, 0L, 0L, 0L, 0L)))
+        assertThatThrownBy(() -> metricService.update(99L, new MetricUpdateRequest(FROM, 0L, 0L, 0L, 0L, UPDATED)))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Không tìm thấy snapshot có id = 99");
         verify(metricRepository, never()).saveAndFlush(any());
@@ -179,11 +180,24 @@ class SocialMetricServiceTests {
         when(metricRepository.findByIdForUpdate(11L)).thenReturn(Optional.of(metric));
         when(metricRepository.existsByPostIdAndCapturedAtAndIdNot(5L, TO, 11L)).thenReturn(true);
 
-        assertThatThrownBy(() -> metricService.update(11L, new MetricUpdateRequest(TO, 0L, 0L, 0L, 0L)))
+        assertThatThrownBy(() -> metricService.update(11L, new MetricUpdateRequest(TO, 0L, 0L, 0L, 0L, UPDATED)))
                 .isInstanceOf(ConflictException.class)
                 .hasMessage("Bài viết id = 5 đã có snapshot tại 2026-03-08T00:00:00Z");
         verify(metricRepository, never()).saveAndFlush(any());
         assertThat(metric.getCapturedAt()).isEqualTo(Instant.parse("2026-03-01T01:00:00Z"));
+    }
+
+    @Test
+    void updateWithStaleUpdatedAtThrowsConflictBeforeDuplicateCheck() {
+        SocialMetric metric = sampleMetric(11L);
+        when(metricRepository.findByIdForUpdate(11L)).thenReturn(Optional.of(metric));
+
+        assertThatThrownBy(() -> metricService.update(11L, new MetricUpdateRequest(TO, 0L, 0L, 0L, 0L, CREATED)))
+                .isInstanceOf(ConflictException.class)
+                .hasMessage("Snapshot id = 11 đã bị sửa sau khi bạn tải, hãy tải lại rồi thử lại");
+        verify(metricRepository, never()).existsByPostIdAndCapturedAtAndIdNot(any(), any(), any());
+        verify(metricRepository, never()).saveAndFlush(any());
+        assertThat(metric.getLikes()).isEqualTo(120);
     }
 
     @Test
