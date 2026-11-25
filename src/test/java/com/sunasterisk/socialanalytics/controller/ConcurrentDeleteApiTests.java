@@ -35,7 +35,8 @@ import org.testcontainers.mysql.MySQLContainer;
 class ConcurrentDeleteApiTests extends ApiTestBase {
 
     private static final String METRIC_UPDATE = """
-            {"capturedAt": "2026-03-05T00:00:00Z", "likes": 1, "shares": 0, "comments": 0, "followers": 0}
+            {"capturedAt": "2026-03-05T00:00:00Z", "likes": 1, "shares": 0, "comments": 0, "followers": 0,
+             "updatedAt": "2026-03-01T00:00:00Z"}
             """;
 
     @Autowired
@@ -64,7 +65,7 @@ class ConcurrentDeleteApiTests extends ApiTestBase {
         performWhileUncommitted("delete from posts where id = ?", id,
                 () -> mockMvc.perform(put("/api/v1/posts/{id}", id).contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"accountName": "new"}
+                                {"accountName": "new", "updatedAt": "2026-03-01T00:00:00Z"}
                                 """)))
                 .andExpect(status().isNotFound());
     }

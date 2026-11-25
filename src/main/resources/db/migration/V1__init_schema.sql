@@ -1,14 +1,15 @@
 -- Thiết kế chi tiết: docs/01-thiet-ke-csdl.md
 -- Mọi cột thời gian lưu theo UTC (spring.jpa.properties.hibernate.jdbc.time_zone=UTC).
+-- Cột enum dùng collation nhị phân để CHECK phân biệt hoa thường như Enum.valueOf của Hibernate.
 
 CREATE TABLE users (
     id               BIGINT        NOT NULL AUTO_INCREMENT,
-    provider         VARCHAR(20)   NOT NULL,
+    provider         VARCHAR(20)   COLLATE utf8mb4_0900_bin NOT NULL,
     provider_user_id VARCHAR(100)  NOT NULL,
     email            VARCHAR(255)  NULL,
     display_name     VARCHAR(100)  NOT NULL,
     avatar_url       VARCHAR(1000) NULL,
-    role             VARCHAR(20)   NOT NULL DEFAULT 'USER',
+    role             VARCHAR(20)   COLLATE utf8mb4_0900_bin NOT NULL DEFAULT 'USER',
     created_at       DATETIME(6)   NOT NULL,
     updated_at       DATETIME(6)   NOT NULL,
     CONSTRAINT pk_users PRIMARY KEY (id),
@@ -19,7 +20,7 @@ CREATE TABLE users (
 
 CREATE TABLE posts (
     id           BIGINT        NOT NULL AUTO_INCREMENT,
-    platform     VARCHAR(20)   NOT NULL,
+    platform     VARCHAR(20)   COLLATE utf8mb4_0900_bin NOT NULL,
     external_id  VARCHAR(100)  NOT NULL,
     account_name VARCHAR(100)  NOT NULL,
     url          VARCHAR(1000) NULL,

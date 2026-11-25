@@ -71,9 +71,11 @@ public class PostController {
 
     @PutMapping("/{id}")
     @Operation(summary = "Sửa bài viết",
-            description = "Thay toàn bộ các trường sửa được. `platform` và `externalId` là định danh, không sửa được.")
+            description = "Thay toàn bộ các trường sửa được. `platform` và `externalId` là định danh, không sửa được. "
+                    + "`updatedAt` là giá trị client đã đọc.")
     @ApiResponse(responseCode = "200", description = "OK")
     @ApiResponse(responseCode = "404", description = "Không có bài viết với id này")
+    @ApiResponse(responseCode = "409", description = "Bài viết đã bị sửa sau khi client đọc (`updatedAt` khác)")
     @ApiResponse(responseCode = "422", description = "Dữ liệu không hợp lệ")
     public PostResponse update(@PathVariable Long id, @Valid @RequestBody PostUpdateRequest request) {
         return postService.update(id, request);
