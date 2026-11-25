@@ -1,0 +1,21 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: social-analytics-mysql
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-social_analytics}
+      MYSQL_USER: ${DB_USERNAME:-social}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-social}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql-data:

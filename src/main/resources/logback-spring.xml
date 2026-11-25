@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <!-- Tests: console only -->
+    <springProfile name="test">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!--
+        Other profiles: console + Boot's rolling file appender, same format as the console (timestamps with offset).
+        Path and rotation come from logging.file.name and logging.logback.rollingpolicy.* in application.properties.
+    -->
+    <springProfile name="!test">
+        <include resource="org/springframework/boot/logging/logback/file-appender.xml"/>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+        </root>
+    </springProfile>
+</configuration>
