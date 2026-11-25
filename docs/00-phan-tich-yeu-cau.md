@@ -151,7 +151,7 @@ sequenceDiagram
 - **Snapshot**: mỗi bài có tối đa một snapshot tại một thời điểm; số đếm không âm. Mọi snapshot của một lần chạy job hoặc một lần import dùng chung một `captured_at`.
 - **Followers** là số của tài khoản, không phải của bài: tổng hợp lấy một giá trị cho mỗi tài khoản, không cộng theo bài (`01-thiet-ke-csdl.md`, quyết định 2).
 - **Quyền** (đã chốt, Q1): ghi dữ liệu, import, chạy job chỉ `ADMIN`; xem và export cho mọi user đã đăng nhập.
-- **Import** (đề xuất, Q3, Q4): tất cả hoặc không có gì; bài trùng thì cập nhật; tối đa 5MB, 5.000 dòng.
+- **Import** (đã chốt, Q3, Q4): tất cả hoặc không có gì; bài trùng thì cập nhật; dòng có đủ bốn cột số liệu thì tạo snapshot; tối đa 5MB, 5.000 dòng.
 - **Thống kê** (đã chốt, Q5, Q12): tính lại sau import, sau mỗi lần chạy job và sau khi sửa/xóa qua API; tính lại từ dữ liệu gốc cho các ngày bị ảnh hưởng, không cộng dồn, nên xử lý trùng message vẫn đúng. Số của một ngày là tổng snapshot mới nhất của mỗi bài **tính đến hết ngày đó**, nên ngày thiếu snapshot không bị tụt về 0.
 - **Ghi đồng thời** (đã áp dụng từ #4): sửa thì khóa dòng ngay lần đọc đầu; xóa là một câu `DELETE` kiểm tra số dòng; trùng khóa nghiệp vụ do ràng buộc UNIQUE chặn và trả 409.
 

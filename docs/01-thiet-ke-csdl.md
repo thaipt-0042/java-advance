@@ -188,14 +188,14 @@ erDiagram
 
 ### `import_batches` (#6, dùng ở #12)
 
-Một dòng cho mỗi lần import **thành công**. Đề xuất import theo kiểu tất cả hoặc không có gì (Q4): file có dòng lỗi thì trả 422 kèm danh sách lỗi, không ghi gì, nên không có dòng "import lỗi" ở đây.
+Một dòng cho mỗi lần import **thành công**. Import theo kiểu tất cả hoặc không có gì (đã chốt, Q4): file có dòng lỗi thì trả 422 kèm danh sách lỗi, không ghi gì, nên không có dòng "import lỗi" ở đây.
 
 | Cột | Kiểu | Ràng buộc | Ghi chú |
 |---|---|---|---|
 | `file_name` | VARCHAR(255) | NOT NULL | tên file gốc, chỉ để hiển thị (không dùng làm đường dẫn) |
 | `uploaded_by` | BIGINT | NULL, FK → `users.id` `ON DELETE SET NULL` | |
 | `total_rows` | INT | NOT NULL, CHECK `>= 0` | số dòng dữ liệu |
-| `created_posts`, `updated_posts` | INT | NOT NULL, CHECK `>= 0` | bài mới / bài đã có được cập nhật (Q4: trùng thì cập nhật) |
+| `created_posts`, `updated_posts` | INT | NOT NULL, CHECK `>= 0` | bài mới / bài đã có và có dữ liệu thay đổi (Q4: trùng thì cập nhật; dòng giống hệt dữ liệu đang lưu không tính) |
 | `snapshots_created` | INT | NOT NULL, CHECK `>= 0` | > 0 khi file có cột số liệu (Q3) |
 | `captured_at` | DATETIME(6) | NULL | thời điểm gán cho snapshot của lần import này (một giá trị cho cả file) |
 | `stats_refreshed_at` | DATETIME(6) | NULL | listener JMS điền khi đã tính lại thống kê; NULL lâu nghĩa là message chưa được xử lý hoặc đã vào DLQ |

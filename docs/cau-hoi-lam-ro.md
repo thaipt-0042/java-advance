@@ -1,6 +1,6 @@
 # Câu hỏi cần làm rõ
 
-Các điểm đề bài chưa nói rõ. Mỗi câu ghi các phương án và **đề xuất**. **Q1, Q2, Q5, Q12 đã chốt**; các câu còn lại đang **chưa có câu trả lời**. Tài liệu thiết kế khác (`00`–`03`) đang viết theo đề xuất, chỗ nào phụ thuộc câu trả lời thì ghi số câu (Q…). Có câu trả lời thì cập nhật file này và các tài liệu liên quan.
+Các điểm đề bài chưa nói rõ. Mỗi câu ghi các phương án và **đề xuất**. **Q1, Q2, Q3, Q4, Q5, Q12 đã chốt**; các câu còn lại đang **chưa có câu trả lời**. Tài liệu thiết kế khác (`00`–`03`) đang viết theo đề xuất, chỗ nào phụ thuộc câu trả lời thì ghi số câu (Q…). Có câu trả lời thì cập nhật file này và các tài liệu liên quan.
 
 Đề bài được nhắc theo tên giai đoạn ("Khởi tạo project", "Unit Test + Import/Export Excel", "Bảo mật & CSRF + Social Login", "Background Job & MultiThread", "JMS & Queue Handling", "WebSocket + Chart Visualization", "Spring WebService + Reflection nâng cao + Tổng kết").
 
@@ -31,7 +31,7 @@ Giai đoạn "Unit Test + Import/Export Excel" ghi file chứa "danh sách bài 
 - (a) File chỉ có thông tin bài: `platform`, `externalId`, `accountName`, `url`, `content`, `publishedAt`.
 - (b) Thêm các cột số liệu **không bắt buộc**: `likes`, `shares`, `comments`, `followers`. Dòng có số liệu thì tạo thêm một snapshot; mọi snapshot của một file có chung `captured_at` = thời điểm import.
 
-**Đề xuất: (b).** Có số liệu thì message `IMPORT_COMPLETED` mới thật sự làm thống kê thay đổi.
+**Đã chốt: (b).** Có số liệu thì message `IMPORT_COMPLETED` mới thật sự làm thống kê thay đổi.
 
 ## Q4. Import: dòng lỗi và bài trùng
 
@@ -43,7 +43,7 @@ Giai đoạn "Unit Test + Import/Export Excel" ghi file chứa "danh sách bài 
   - (d) Bỏ qua dòng đó.
 - Cùng một bài xuất hiện hai lần trong một file: báo lỗi dòng.
 
-**Đề xuất: (a) + (c).** (a) đơn giản cho người dùng (sửa file rồi import lại, không phải đoán dòng nào đã vào) và message JMS chỉ gửi khi cả file đã vào DB. (c) cho phép sửa file rồi import lại. Giới hạn đề xuất: file `.xlsx` tối đa 5MB, tối đa 5.000 dòng.
+**Đã chốt: (a) + (c).** (a) đơn giản cho người dùng (sửa file rồi import lại, không phải đoán dòng nào đã vào) và message JMS chỉ gửi khi cả file đã vào DB. (c) cho phép sửa file rồi import lại. Giới hạn: file `.xlsx` tối đa 5MB, tối đa 5.000 dòng. Chi tiết khi làm #6: bài trùng so `externalId` như cột trong DB (không phân biệt hoa thường và dấu); chỉ cập nhật các cột có trong file, nên file thiếu cột `content` không xóa nội dung đã lưu.
 
 ## Q5. Bảng thống kê tổng hợp được tính lại khi nào?
 

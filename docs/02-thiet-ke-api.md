@@ -102,13 +102,14 @@ Theo cùng quy ước với phần đã làm: tiền tố `/api/v1`, DTO, lỗi 
 
 | Kết quả | Status | Body |
 |---|---|---|
-| Thành công | 200 | `{batchId, totalRows, createdPosts, updatedPosts, snapshotsCreated}` |
-| Có dòng lỗi (đề xuất: không ghi gì, Q4) | 422 `VALIDATION` | `errors`: `[{row, column, message}]`, `row` là số dòng trong Excel |
+| Thành công | 200 | `{batchId, totalRows, createdPosts, updatedPosts, snapshotsCreated, capturedAt}` |
+| Có dòng lỗi (không ghi gì, Q4) | 422 `VALIDATION` | `errors`: `[{row, column, message}]`, `row` là số dòng trong Excel |
 | Không phải file `.xlsx` đọc được, thiếu cột bắt buộc, sai tên cột | 400 `BAD_REQUEST` | |
-| File quá giới hạn (đề xuất 5MB) | 413 `PAYLOAD_TOO_LARGE` | |
-| Quá số dòng cho phép (đề xuất 5.000) | 422 `VALIDATION` | |
+| File quá giới hạn (5MB) | 413 `CONTENT_TOO_LARGE` | tên status của Spring 7 cho 413 |
+| Quá số dòng cho phép (5.000) | 422 `VALIDATION` | `errors` rỗng, `detail` ghi số dòng |
+| Một bài mới trong file vừa được request khác tạo, sau khi import đã kiểm tra | 409 `CONFLICT` | ràng buộc UNIQUE chặn, không ghi gì |
 
-Cột (đề xuất, Q3): `platform`, `externalId`, `accountName` bắt buộc; `url`, `content`, `publishedAt` tùy chọn; `likes`, `shares`, `comments`, `followers` tùy chọn nhưng có một thì phải có đủ cả bốn. Giới hạn độ dài giống DTO của `/posts`. Kiểm tra trùng `(platform, externalId)` trong cùng file.
+Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform` thì phân biệt như API): `platform`, `externalId`, `accountName` bắt buộc; `url`, `content`, `publishedAt` tùy chọn; `likes`, `shares`, `comments`, `followers` tùy chọn nhưng có một thì phải có đủ cả bốn. Giới hạn độ dài giống DTO của `/posts`. Kiểm tra trùng `(platform, externalId)` trong cùng file.
 
 - Gửi `IMPORT_COMPLETED` (#12) sau khi commit.
 - File quá lớn phải nhận được 413 chứ không bị đứt kết nối: đặt `server.tomcat.max-swallow-size` lớn hơn giới hạn upload, test với file lớn hơn giới hạn thật (reviewer repo cũ đã nhắc).
