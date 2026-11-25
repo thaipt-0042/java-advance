@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 
@@ -102,16 +103,46 @@ class SocialMetricApiTests extends ApiTestBase {
         long first = createMetric(postId, "2026-03-01T00:00:00Z", 1);
         createMetric(postId, "2026-03-02T00:00:00Z", 2);
 
-        mockMvc.perform(put("/api/v1/metrics/{id}", first).contentType(MediaType.APPLICATION_JSON).content("""
-                        {"capturedAt": "2026-03-01T01:00:00Z", "likes": 7, "shares": 0, "comments": 0, "followers": 9}
-                        """))
+        String updatedAt = mockMvc.perform(put("/api/v1/metrics/{id}", first).contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"capturedAt": "2026-03-01T01:00:00Z", "likes": 7, "shares": 0, "comments": 0,
+                                 "followers": 9, "updatedAt": "%s"}
+                                """.formatted(updatedAtOf("/api/v1/metrics", first))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.likes").value(7))
-                .andExpect(jsonPath("$.capturedAt").value("2026-03-01T01:00:00Z"));
+                .andExpect(jsonPath("$.capturedAt").value("2026-03-01T01:00:00Z"))
+                .andReturn().getResponse().getContentAsString();
         mockMvc.perform(put("/api/v1/metrics/{id}", first).contentType(MediaType.APPLICATION_JSON).content("""
-                        {"capturedAt": "2026-03-02T00:00:00Z", "likes": 7, "shares": 0, "comments": 0, "followers": 9}
-                        """))
-                .andExpect(status().isConflict());
+                        {"capturedAt": "2026-03-02T00:00:00Z", "likes": 7, "shares": 0, "comments": 0, "followers": 9,
+                         "updatedAt": "%s"}
+                        """.formatted(JsonPath.<String>read(updatedAt, "$.updatedAt"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Bài viết id = %d đã có snapshot tại 2026-03-02T00:00:00Z"
+                        .formatted(postId)));
+    }
+
+    @Test
+    void updateWithStaleUpdatedAtReturns409AndKeepsTheEarlierChange() throws Exception {
+        long postId = createPost("FACEBOOK", "m-" + token(), "page", "c");
+        long id = createMetric(postId, "2026-03-01T00:00:00Z", 1);
+        String readByBoth = updatedAtOf("/api/v1/metrics", id);
+
+        mockMvc.perform(put("/api/v1/metrics/{id}", id).contentType(MediaType.APPLICATION_JSON).content("""
+                        {"capturedAt": "2026-03-01T00:00:00Z", "likes": 50, "shares": 2, "comments": 3,
+                         "followers": 100, "updatedAt": "%s"}
+                        """.formatted(readByBoth)))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/metrics/{id}", id).contentType(MediaType.APPLICATION_JSON).content("""
+                        {"capturedAt": "2026-03-01T00:00:00Z", "likes": 1, "shares": 2, "comments": 3,
+                         "followers": 999, "updatedAt": "%s"}
+                        """.formatted(readByBoth)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail")
+                        .value("Snapshot id = %d đã bị sửa sau khi bạn tải, hãy tải lại rồi thử lại".formatted(id)));
+
+        mockMvc.perform(get("/api/v1/metrics/{id}", id))
+                .andExpect(jsonPath("$.likes").value(50))
+                .andExpect(jsonPath("$.followers").value(100));
     }
 
     @Test
@@ -123,7 +154,7 @@ class SocialMetricApiTests extends ApiTestBase {
                         {"capturedAt": "2026-03-01T00:00:00Z", "likes": 1, "shares": -5, "comments": 0, "followers": 0}
                         """))
                 .andExpect(status().isUnprocessableContent())
-                .andExpect(jsonPath("$.errors[0].field").value("shares"));
+                .andExpect(jsonPath("$.errors[*].field", containsInAnyOrder("shares", "updatedAt")));
     }
 
     @Test
@@ -135,7 +166,8 @@ class SocialMetricApiTests extends ApiTestBase {
         mockMvc.perform(get("/api/v1/metrics/{id}", id)).andExpect(status().isNotFound());
         mockMvc.perform(delete("/api/v1/metrics/{id}", id)).andExpect(status().isNotFound());
         mockMvc.perform(put("/api/v1/metrics/{id}", id).contentType(MediaType.APPLICATION_JSON).content("""
-                        {"capturedAt": "2026-03-01T00:00:00Z", "likes": 1, "shares": 0, "comments": 0, "followers": 0}
+                        {"capturedAt": "2026-03-01T00:00:00Z", "likes": 1, "shares": 0, "comments": 0, "followers": 0,
+                         "updatedAt": "2026-03-01T00:00:00Z"}
                         """))
                 .andExpect(status().isNotFound());
     }
