@@ -69,6 +69,12 @@ public class SocialMetricService {
     public MetricResponse update(Long id, MetricUpdateRequest request) {
         // Locked on first read: a concurrent delete (of the snapshot or of its post) gives 404, not a 500.
         SocialMetric metric = metricRepository.findByIdForUpdate(id).orElseThrow(() -> snapshotNotFound(id));
+        // The lock only runs two PUTs one after the other; without this check the later one would silently
+        // overwrite the earlier one's changes. updatedAt has column precision, so it compares exactly.
+        if (!metric.getUpdatedAt().equals(DbTime.toColumnPrecision(request.updatedAt()))) {
+            throw new ConflictException(
+                    "Snapshot id = %d đã bị sửa sau khi bạn tải, hãy tải lại rồi thử lại".formatted(id));
+        }
         Long postId = metric.getPost().getId();
         Instant capturedAt = DbTime.toColumnPrecision(request.capturedAt());
         if (metricRepository.existsByPostIdAndCapturedAtAndIdNot(postId, capturedAt, id)) {

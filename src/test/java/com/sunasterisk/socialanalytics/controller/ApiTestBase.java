@@ -1,5 +1,6 @@
 package com.sunasterisk.socialanalytics.controller;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -49,6 +50,14 @@ abstract class ApiTestBase {
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) JsonPath.read(response, "$.id")).longValue();
+    }
+
+    /** The current updatedAt of a post or snapshot, which an update must send back. */
+    protected String updatedAtOf(String path, long id) throws Exception {
+        String response = mockMvc.perform(get(path + "/{id}", id))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return JsonPath.read(response, "$.updatedAt");
     }
 
     protected static String metricJson(long postId, String capturedAt, long likes) {

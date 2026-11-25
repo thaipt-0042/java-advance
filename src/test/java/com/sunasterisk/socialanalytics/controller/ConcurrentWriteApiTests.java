@@ -62,8 +62,9 @@ class ConcurrentWriteApiTests extends ApiTestBase {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value(GENERIC_CONFLICT));
         mockMvc.perform(put("/api/v1/metrics/{id}", other).contentType(MediaType.APPLICATION_JSON).content("""
-                        {"capturedAt": "2026-03-01T00:00:00Z", "likes": 1, "shares": 0, "comments": 0, "followers": 0}
-                        """))
+                        {"capturedAt": "2026-03-01T00:00:00Z", "likes": 1, "shares": 0, "comments": 0, "followers": 0,
+                         "updatedAt": "%s"}
+                        """.formatted(updatedAtOf("/api/v1/metrics", other))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value(GENERIC_CONFLICT));
     }
