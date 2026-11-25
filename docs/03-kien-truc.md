@@ -17,9 +17,10 @@ com.sunasterisk.socialanalytics
 │                ImportController (#6), ReportController (#7), JobController (#11), ChartDataController (#13)
 ├── web          LoginController, DashboardController (Thymeleaf)         (#9, #11)
 ├── service      PostService, SocialMetricService                         (đã có)
-│                PostImportService (#6), ReportService (#7), MetricUpdateService (#10),
+│                PostImportService (#6), ReportService (#7),
 │                StatsService (#12), ChartDataService (#13), ExchangeRateService (#15)
-├── job          UpdateSocialMetricsJob (@Scheduled), JobLauncher (@Async), AccountMetricsUpdater (@Async)   (#10)
+│   └── metrics  MetricUpdateService, AccountMetricsUpdater (@Async), JobLauncher (@Async)   (#10)
+├── job          UpdateSocialMetricsJob (@Scheduled), chỉ gọi MetricUpdateService   (#10)
 ├── client       SocialMetricsClient + MockFacebookMetricsClient, MockTwitterMetricsClient   (#10)
 ├── messaging    StatsRefreshMessage, StatsRefreshPublisher, StatsRefreshListener, DeadLetterListener   (#12)
 ├── websocket    DashboardEventPublisher                                  (#13)
@@ -43,6 +44,7 @@ src/main/resources
 
 - `controller` là REST (JSON), `web` là trang Thymeleaf: hai loại có cách xử lý lỗi khác nhau (JSON so với chuyển trang), nên tách package để `GlobalExceptionHandler` chỉ áp dụng cho REST (`@RestControllerAdvice` giới hạn theo package hoặc annotation, làm ở #11).
 - `client` là ranh giới với "API Facebook/X". Đề chỉ cần bản mock; thay bằng client thật chỉ phải thêm một implementation.
+- **Phụ thuộc chỉ đi một chiều** `controller`/`web`/`job`/`messaging` → `service` → `repository`/`client`; không gói nào import `job`. Vì vậy mọi phần của luồng cập nhật số liệu mà service gọi tới (`AccountMetricsUpdater` do `MetricUpdateService` gọi, `JobLauncher` do luồng chạy tay từ HTTP gọi) nằm trong `service.metrics`, còn `job` chỉ có `UpdateSocialMetricsJob` là điểm vào theo lịch. Nếu để hai class đó ở `job` thì `job` và `service` import lẫn nhau, sửa bên này phải kiểm lại bên kia.
 
 ## 2. Trách nhiệm từng lớp
 
