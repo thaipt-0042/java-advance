@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.sunasterisk.socialanalytics.service.StatsChanges;
+import com.sunasterisk.socialanalytics.support.StatsQueue;
 import com.sunasterisk.socialanalytics.support.TestcontainersConfiguration;
 import java.time.Duration;
 import java.time.Instant;
@@ -77,9 +78,8 @@ class StatsMessagingTests {
 
     @Test
     void aMessageThatKeepsFailingEndsInTheDeadLetterQueueAndIsLogged(CapturedOutput output) throws Exception {
-        // Earlier tests leave refresh messages in the shared queue (each takes up to ~1s); let them go first so the
-        // timing below only measures the redeliveries.
-        awaitEmptyQueue();
+        // Let earlier tests' refreshes go first, so the timing below only measures the redeliveries.
+        StatsQueue.awaitDrained(jmsTemplate);
         String marker = "poison-" + Instant.now().toEpochMilli();
         // Claims to be a refresh message but isn't valid JSON: conversion fails on every delivery.
         jmsTemplate.send(StatsRefreshMessage.QUEUE, session -> {
@@ -101,16 +101,6 @@ class StatsMessagingTests {
                 .contains("from " + StatsRefreshMessage.QUEUE);
         assertThat(output.getOut().lines().filter(line -> line.contains("Execution of JMS message listener failed")))
                 .as("failed deliveries").hasSize(4);
-    }
-
-    private void awaitEmptyQueue() throws InterruptedException {
-        long start = System.nanoTime();
-        while (Boolean.TRUE.equals(jmsTemplate.browse(StatsRefreshMessage.QUEUE,
-                (session, browser) -> browser.getEnumeration().hasMoreElements()))) {
-            assertThat(Duration.ofNanos(System.nanoTime() - start)).as("queue drained")
-                    .isLessThan(Duration.ofMinutes(3));
-            Thread.sleep(200);
-        }
     }
 
     private static String deadLetterLine(CapturedOutput output, String marker) {
