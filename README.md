@@ -18,17 +18,19 @@ Mini project của khóa **Java Spring Boot – Advance**: ứng dụng web giú
 ```
 src/main/java/com/sunasterisk/socialanalytics
 ├── SocialAnalyticsApplication.java
-├── config/        # cấu hình (OpenAPI, ...)
+├── config/        # cấu hình (OpenAPI, Clock, JPA auditing)
 ├── controller/    # REST controllers
 ├── service/       # business logic
 ├── repository/    # Spring Data JPA repositories
 ├── dto/           # request/response DTO
 ├── entity/        # JPA entities
+├── exception/     # exception của app + GlobalExceptionHandler (format lỗi chung)
 ├── seed/          # dữ liệu mẫu cho profile dev
 └── util/          # helper
 
 src/main/resources/db/migration   # Flyway migration (V1__init_schema.sql, ...)
 docs/01-thiet-ke-csdl.md          # thiết kế CSDL
+docs/02-thiet-ke-api.md           # API CRUD /posts, /metrics và format lỗi
 ```
 
 ## Chạy local
@@ -49,6 +51,7 @@ docker compose up -d
 - Health: http://localhost:8080/actuator/health
 - Swagger UI (chỉ profile `dev`): http://localhost:8080/swagger-ui.html
 - OpenAPI JSON (chỉ profile `dev`): http://localhost:8080/v3/api-docs
+- API: `/api/v1/posts`, `/api/v1/metrics` (xem `docs/02-thiet-ke-api.md`)
 
 ### Profile
 
@@ -58,7 +61,7 @@ docker compose up -d
 | `dev` | như mặc định, thêm: bật Swagger/OpenAPI, seed dữ liệu mẫu khi DB trống, log package app ở `DEBUG` |
 | `test` | MySQL 8.4 qua Testcontainers, chỉ log ra console |
 
-Các biến cấu hình (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `PORT`, `APP_TIME_ZONE`, `SPRING_PROFILES_ACTIVE`) xem trong `.env.example`.
+Các biến cấu hình (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `PORT`, `FORWARD_HEADERS_STRATEGY`, `APP_TIME_ZONE`, `SPRING_PROFILES_ACTIVE`) xem trong `.env.example`.
 
 Schema thay đổi bằng cách thêm file migration mới (`V2__...sql`), không sửa file đã chạy.
 

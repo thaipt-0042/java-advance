@@ -102,5 +102,5 @@ Mọi bảng có `id` (BIGINT AUTO_INCREMENT), `created_at`, `updated_at` (DATET
 
 ## Lưu ý cho các issue sau
 
-- **Vi phạm UNIQUE, FK hay CHECK đều thành `DataIntegrityViolationException`** (Hibernate 7, test trong `PostRepositoryTests`/`SocialMetricRepositoryTests`). Handler ở #4 map lỗi này về 409, nhưng 409 chỉ đúng cho trường hợp trùng dữ liệu; số âm hay platform không hợp lệ là lỗi input, nên DTO ở #4/#6 phải chặn trước bằng validation (`@PositiveOrZero`, kiểu enum) để trả 422. CHECK chỉ là lớp bảo vệ cuối.
+- **Vi phạm UNIQUE, FK hay CHECK đều thành `DataIntegrityViolationException`** (Hibernate 7, test trong `PostRepositoryTests`/`SocialMetricRepositoryTests`). Handler ở #4 map lỗi này về 409, nhưng 409 chỉ đúng cho trường hợp trùng dữ liệu; số âm hay platform không hợp lệ là lỗi input, nên DTO ở #4/#6 phải chặn trước: số âm bằng `@PositiveOrZero` (422), platform lạ bị chặn ngay khi đọc JSON vì DTO dùng kiểu enum (400). CHECK chỉ là lớp bảo vệ cuối. Bảng mã lỗi đầy đủ ở `docs/02-thiet-ke-api.md`.
 - **Collation `utf8mb4_0900_ai_ci`** (trừ các cột enum ở trên) không phân biệt hoa/thường và dấu: so sánh `account_name` hay tìm kiếm `content` sẽ coi `Thai` và `Thái` là bằng nhau.
