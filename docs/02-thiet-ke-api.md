@@ -95,7 +95,9 @@ Theo cùng quy ước với phần đã làm: tiền tố `/api/v1`, DTO, lỗi 
 | Thiếu quyền | 403, `code` `FORBIDDEN` |
 | Thiếu hoặc sai CSRF token ở request thay đổi dữ liệu | 403, `code` `FORBIDDEN` |
 
-401/403 của API trả JSON cùng format lỗi; trang web thì chuyển về `/login`. Lỗi nghiệp vụ không dùng `AccessDeniedException` để client nhận đúng câu báo lỗi.
+401/403 của API trả JSON cùng format lỗi; trang web thì chuyển về `/login` (khi có cách đăng nhập: form demo của profile `dev`, sau này OAuth2; chưa có thì 403). Lỗi nghiệp vụ không dùng `AccessDeniedException` để client nhận đúng câu báo lỗi.
+
+API chỉ nhận CSRF token trong header `X-XSRF-TOKEN` (giá trị của cookie `XSRF-TOKEN`), không nhận trường `_csrf`, kể cả với upload multipart (#8): tìm trường `_csrf` buộc Tomcat parse body multipart ngay trong filter bảo mật, và body vượt giới hạn upload ném lỗi ở đó (log `ERROR` kèm stack trace cho mỗi request như vậy). Form của trang web (đăng nhập, đăng xuất, nút chạy job) vẫn gửi `_csrf`.
 
 ### Import bài viết (#6)
 
@@ -121,8 +123,8 @@ Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform`
 `GET /api/v1/export-report?from=2026-11-01&to=2026-11-30&platform=FACEBOOK` (mọi tham số tùy chọn; `from`/`to` là ngày `publishedAt` theo giờ Việt Nam, bao gồm cả hai đầu, tối đa 366 ngày).
 
 - 200, `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment; filename="social-report-2026-11-20.xlsx"` (ngày xuất theo giờ Việt Nam).
-- Nội dung theo đề xuất (Q11, chưa chốt): sheet "Posts" (mỗi bài kèm snapshot mới nhất, #7), sheet "Daily" (thống kê theo ngày, thêm ở #12). #15 thêm cột chi phí quảng cáo quy ra VND và sheet tỷ giá (Q7).
-- `from` sau `to` hoặc khoảng quá dài: 422.
+- Nội dung theo đề xuất (Q11, chưa chốt): sheet "Posts" (mỗi bài kèm snapshot mới nhất, theo thứ tự tạo; cột như file import, thêm `capturedAt`; #7), sheet "Daily" (`date`, `platform`, `postsTracked`, `postsMeasured`, `likes`, `shares`, `comments`, `followers` của các ngày trong `from`..`to`; #12). #15 thêm cột chi phí quảng cáo quy ra VND và sheet tỷ giá (Q7).
+- `from` sau `to`, khoảng quá dài, tham số sai kiểu (ngày không đúng dạng `yyyy-MM-dd`, nền tảng lạ) hoặc hơn 100.000 bài khớp bộ lọc: 422.
 
 ### Chạy job thủ công (#10, #11)
 
@@ -131,7 +133,7 @@ Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform`
 - 202 `{runId}`: đã bắt đầu, chạy nền.
 - 409 `CONFLICT`: đang có lần chạy chưa xong (đã chốt, Q6).
 
-`GET /api/v1/jobs/update-metrics/latest`: lần chạy gần nhất `{runId, status, triggerType, startedAt, finishedAt, accountsTotal, accountsFailed}` và `lastUpdatedAt` (lần `SUCCEEDED`/`PARTIAL` gần nhất); 200 kèm `null` các trường khi chưa chạy lần nào.
+`GET /api/v1/jobs/update-metrics/latest`: lần chạy gần nhất `{runId, status, triggerType, startedAt, finishedAt, accountsTotal, accountsFailed, snapshotsCreated, errorMessage}` và `lastUpdatedAt` (lần `SUCCEEDED`/`PARTIAL` gần nhất); 200 kèm `null` các trường khi chưa chạy lần nào.
 
 ### Dữ liệu biểu đồ (#13)
 

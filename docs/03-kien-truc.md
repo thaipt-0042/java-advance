@@ -11,8 +11,8 @@ com.sunasterisk.socialanalytics
 ├── SocialAnalyticsApplication                          (đã có)
 ├── config       ClockConfig, JpaAuditingConfig, OpenApiConfig            (đã có)
 │                AsyncConfig (#10: @EnableAsync, 2 executor), JmsConfig (#12), WebSocketConfig (#13), WebServiceConfig (#15)
-├── security     SecurityConfig, SocialOAuth2UserService, AdminAccountsProperties,
-│                ProblemDetailAuthenticationEntryPoint, ProblemDetailAccessDeniedHandler   (#8, #9)
+├── security     SecurityConfig, DemoLoginProperties, HeaderCsrfTokenRequestHandler, CsrfCookieFilter   (#8)
+│                SocialOAuth2UserService, AdminAccountsProperties                          (#9)
 ├── controller   PostController, SocialMetricController                   (đã có)
 │                ImportController (#6), ReportController (#7), JobController (#11), ChartDataController (#13)
 ├── web          LoginController, DashboardController (Thymeleaf)         (#9, #11)
@@ -73,9 +73,14 @@ src/main/resources
 - **Token**: lưu qua `JdbcOAuth2AuthorizedClientService` (bảng `oauth2_authorized_client`); không log, không trả ra API. Mã hóa AES-GCM khi lưu (đã chốt, Q8), khóa từ `APP_TOKEN_ENCRYPTION_KEY`, qua row mapper / parameters mapper của service đó (kiểm tra khi làm #9).
 - **Nguồn CSRF token** (**đề yêu cầu** "CSRF token và form submission"). Từ Spring Security 6, token đưa ra trang mặc định được "mask" (mỗi lần một giá trị khác, chống tấn công BREACH, `XorCsrfTokenRequestAttributeHandler`). Mỗi loại client lấy token ở một chỗ:
   - **Form Thymeleaf** (submit thường): trường ẩn `_csrf` do Thymeleaf tự chèn. Có ít nhất hai form thật: đăng xuất (`POST /logout`) và nút "Chạy job ngay" (`POST /dashboard/update-metrics`, issue #11).
-  - **JS gọi API** (`fetch` từ dashboard, Swagger UI): đọc cookie `XSRF-TOKEN` (`CookieCsrfTokenRepository`, không `HttpOnly`) và gửi lại trong header. Cookie chứa token chưa mask, nên phía server phải dùng handler cho client JS: Spring Security 7.1 có `csrf.spa()` (đã thấy trong jar 7.1.1), nhận token dạng thô ở header và dạng mask ở tham số form. Tên header (mặc định của cookie repository là `X-XSRF-TOKEN`) và thuộc tính để Swagger UI tự gửi header: **kiểm tra khi làm #8**.
+  - **JS gọi API** (`fetch` từ dashboard, Swagger UI): đọc cookie `XSRF-TOKEN` (`CookieCsrfTokenRepository`, không `HttpOnly`) và gửi lại trong header `X-XSRF-TOKEN`. Cookie chứa token chưa mask. Đã làm ở #8:
+    - Chain API dùng `HeaderCsrfTokenRequestHandler`: chỉ đọc token thô từ header, không đọc tham số `_csrf` (xem "Upload multipart và CSRF").
+    - Chain web dùng `csrf.spa()` của Spring Security 7.1: header dạng thô, hoặc trường `_csrf` dạng mask của form.
+    - Token mặc định chỉ được tạo khi có ai đọc nó, nên `CsrfCookieFilter` nạp token ở mọi request để cookie luôn có, kể cả ngay sau khi đăng nhập.
+    - Swagger UI tự gửi header nhờ `springdoc.swagger-ui.csrf.enabled=true` (profile `dev`).
   - **STOMP `CONNECT`**: token lấy từ thẻ meta do Thymeleaf render (giá trị đã mask), gửi trong header của frame `CONNECT`. Interceptor CSRF cho WebSocket của Spring Security 7 cần dạng nào: **kiểm tra khi làm #13**.
-- **Upload multipart và CSRF**: form import gửi bằng `fetch` kèm header CSRF như mọi lời gọi API. Không dùng `_csrf` trong body multipart, vì Spring Security chỉ đọc được tham số đó nếu multipart được parse trước filter bảo mật.
+- **Upload multipart và CSRF**: form import gửi bằng `fetch` kèm header CSRF như mọi lời gọi API. API không đọc `_csrf` trong body multipart: tìm tham số đó buộc Tomcat parse body ngay trong `CsrfFilter`, và body vượt giới hạn upload ném `InvalidParameterException` ở đó, trước mọi handler lỗi (đã đo: log `ERROR` hai lần kèm stack trace cho mỗi request như vậy, ai cũng gửi được). Chỉ đọc header thì thiếu token là 403 sạch, đủ token mà file quá lớn là 413.
+- **401/403 của API**: `SecurityConfig` khai báo entry point và access denied handler chuyển exception cho `HandlerExceptionResolver`, nên `GlobalExceptionHandler` trả cùng format lỗi (`UNAUTHORIZED`, `FORBIDDEN`). Quyền chỉ đặt theo URL, không dùng `@PreAuthorize`.
 - **WebSocket**: handshake `/ws/**` đi qua chain web (cần đăng nhập); frame `CONNECT` kiểm tra CSRF như trên.
   - Chain web bỏ kiểm tra CSRF ở tầng HTTP **chỉ cho `/ws/**`** (`csrf.ignoringRequestMatchers("/ws/**")`). Khi mạng hay reverse proxy không cho WebSocket, SockJS chuyển sang transport HTTP (XHR, gửi frame bằng POST), mà SockJS không cho gắn header hay tham số CSRF vào các POST đó, nên bật CSRF ở đây thì mọi POST tới `/ws/**` bị 403 và biểu đồ không tự cập nhật. Tài liệu Spring Security (mục "SockJS & Relaxing CSRF") hướng dẫn đúng cách này.
   - Vẫn an toàn vì token CSRF được kiểm ở frame `CONNECT` của STOMP: không có token đúng thì không kết nối được. Mọi URL khác vẫn bật CSRF.
@@ -118,20 +123,22 @@ sequenceDiagram
   - Chạy tay (#11): gọi `LockProvider.lock(...)` với cùng tên khóa ngay trong request; không lấy được thì trả 409, lấy được thì chuyển khóa cho `JobLauncher` chạy nền và `unlock()` trong `finally` khi run xong. Nhờ vậy bấm "Chạy job ngay" ở instance nào cũng nhận 409 khi job đang chạy ở instance khác.
   - `lockAtMostFor` dài hơn hạn chờ của `allOf(...)` cộng thời gian chốt run, để khóa không hết hạn khi run còn đang chạy. App chết giữa chừng thì khóa tự hết hạn sau `lockAtMostFor`, lần sau chạy lại được.
   - Dòng `RUNNING` bị bỏ dở được đánh `FAILED` **ngay sau khi lấy được khóa**, không phải lúc khởi động app: lúc giữ khóa thì chắc chắn không instance nào khác đang chạy job, còn lúc khởi động thì instance khác có thể đang chạy và bị đánh nhầm.
-  - Dùng ShedLock 7.x: compatibility matrix trong README của ShedLock ghi hỗ trợ Spring 7.0 và Spring Boot 4.x. Thêm `shedlock-spring` và `shedlock-provider-jdbc-template`.
+  - Dùng ShedLock 7.x (7.11.0): compatibility matrix trong README của ShedLock ghi hỗ trợ Spring 7.0 và Spring Boot 4.x (Boot 4.1.3 dùng Spring Framework 7.0.11). Thêm `shedlock-spring` và `shedlock-provider-jdbc-template`.
 - **`captured_at`**: mọi snapshot của lần chạy dùng `started_at` của run (xem `01-thiet-ke-csdl.md`). Hai lần chạy khác nhau không trùng thời điểm nên không vi phạm `UNIQUE (post_id, captured_at)`.
 - **Test**: client mock trả số cố định, `Clock.fixed`; test riêng trường hợp một tài khoản lỗi, chạy tay khi đang giữ khóa (409), và dòng `RUNNING` cũ được đánh `FAILED` khi lấy được khóa.
 
 ## 5. JMS: thống kê tổng hợp (#12)
 
-- **Broker**: ActiveMQ Artemis (đã chốt, Q10) trong `docker-compose.yml`; test dùng Testcontainers.
+- **Broker**: ActiveMQ Artemis (đã chốt, Q10) trong `docker-compose.yml`; test dùng Testcontainers. Artemis đã tách khỏi ActiveMQ thành **Apache Artemis**: client là `org.apache.artemis` 2.53.0 (Boot 4.1.3 quản lý), image `apache/artemis:2.53.0` (image `apache/activemq-artemis` dừng ở 2.44.0).
+  - Client không prefetch (`consumerWindowSize=0` trong `broker-url`): consumer đang bận (một lần tính dài) hoặc đã dừng không giữ message trong bộ đệm, message đi tới consumer kế tiếp hỏi. Đã gặp khi test: consumer của context đang "pause" giữ message đã prefetch, message không được xử lý.
 - **Queue** `analytics.stats-refresh`. Message JSON `{type, fromDate, batchId?, runId?}`; `fromDate` là ngày sớm nhất bị ảnh hưởng, listener tính lại từ ngày đó tới hôm nay (`01-thiet-ke-csdl.md`):
   - `IMPORT_COMPLETED` (**đề yêu cầu**) sau import, `batchId`;
   - `METRICS_UPDATED` sau mỗi lần chạy job, `runId` (đã chốt, Q5);
   - `METRICS_CHANGED` sau khi sửa/xóa bài hoặc snapshot qua API (đã chốt, Q5).
 - **Chỉ gửi sau khi commit**: service phát Spring event trong transaction; `@TransactionalEventListener(phase = AFTER_COMMIT)` mới gửi JMS. Rollback thì không gửi. Đánh đổi: app chết đúng lúc giữa commit và gửi thì mất message; lần chạy job kế tiếp tính lại ngày hôm nay nên message của import/job tự khớp lại; message của một lần sửa dữ liệu cũ qua API bị mất thì các ngày cũ lệch cho tới lần sửa kế tiếp ở khoảng đó. Transactional outbox nằm ngoài phạm vi.
-- **Listener**: tính lại `daily_platform_stats` từ `fromDate` tới hôm nay (xóa + `INSERT … SELECT` trong một transaction, xem `01-thiet-ke-csdl.md`), điền `import_batches.stats_refreshed_at` nếu có `batchId`, rồi gửi WebSocket `STATS_UPDATED`. Chạy một luồng. Tính lại từ dữ liệu gốc nên nhận trùng message vẫn đúng (**issue #12** yêu cầu idempotent).
-- **Retry và DLQ** (**đề yêu cầu**): session có transaction; listener ném exception thì broker giao lại, tối đa vài lần có độ trễ, sau đó chuyển sang dead letter queue. Cấu hình số lần và độ trễ ở broker (address settings của Artemis), **kiểm tra khi làm #12**. Một listener trên DLQ log `ERROR` kèm nội dung message để biết message nào bị bỏ.
+- **Listener**: tính lại `daily_platform_stats` từ `fromDate` tới hôm nay (xóa + `INSERT … SELECT` trong một transaction READ COMMITTED, xem `01-thiet-ke-csdl.md`), điền `import_batches.stats_refreshed_at` nếu có `batchId`, rồi gửi WebSocket `STATS_UPDATED` (#13). Chạy một luồng.
+- **Gửi lỗi**: broker không kết nối được lúc gửi (sau commit) thì log `ERROR`, không ném lỗi cho request đã commit. Message chỉ có id và ngày; kiểu Java đi theo alias `_type` = `stats-refresh` (`JmsConfig`), không theo tên class. Tính lại từ dữ liệu gốc nên nhận trùng message vẫn đúng (**issue #12** yêu cầu idempotent).
+- **Retry và DLQ** (**đề yêu cầu**): session có transaction; listener ném exception thì broker giao lại, tối đa vài lần có độ trễ, sau đó chuyển sang dead letter queue. Cấu hình ở broker (`docker/artemis/broker.properties`, chép đè lên cấu hình của image, Docker Compose và test dùng chung): giao lại sau 1, 2, 4 giây, lỗi lần thứ 4 thì chuyển sang `analytics.stats-refresh.dlq`; hai queue được khai báo sẵn để giữ message cả khi chưa app nào kết nối. Một listener trên DLQ log `ERROR` kèm nội dung message để biết message nào bị bỏ.
 - Message chỉ chứa id và ngày, không chứa dữ liệu bài viết hay token.
 
 ## 6. WebSocket và biểu đồ (#13, #14)

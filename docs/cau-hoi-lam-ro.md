@@ -107,7 +107,7 @@ Ví dụ: 9:00 import file, bảng được tính lại. 10:00 job lấy đượ
 
 **Đề xuất: ActiveMQ Artemis**, chạy bằng Docker Compose; test dùng Testcontainers.
 
-**Đã chốt: ActiveMQ** (bản Artemis, `spring-boot-starter-artemis`, theo đề xuất).
+**Đã chốt: ActiveMQ** (bản Artemis, `spring-boot-starter-artemis`, theo đề xuất). Artemis nay là dự án riêng tên **Apache Artemis** (vẫn là server đó; image `apache/artemis`).
 
 ## Q11. File export gồm những gì?
 
