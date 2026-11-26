@@ -29,8 +29,11 @@ src/main/java/com/sunasterisk/socialanalytics
 └── util/          # helper
 
 src/main/resources/db/migration   # Flyway migration (V1__init_schema.sql, ...)
-docs/01-thiet-ke-csdl.md          # thiết kế CSDL
-docs/02-thiet-ke-api.md           # API CRUD /posts, /metrics và format lỗi
+docs/00-phan-tich-yeu-cau.md      # phân tích yêu cầu, đối chiếu đề bài ↔ issue
+docs/01-thiet-ke-csdl.md          # thiết kế CSDL: bảng hiện có + lộ trình schema
+docs/02-thiet-ke-api.md           # API đã làm, API dự kiến, format lỗi
+docs/03-kien-truc.md              # package, bảo mật, job, JMS, WebSocket, SOAP
+docs/cau-hoi-lam-ro.md            # điểm đề chưa rõ (chờ trả lời), điều cần báo mentor
 .github/workflows/ci.yml          # CI: ./mvnw verify trên GitHub Actions
 ```
 

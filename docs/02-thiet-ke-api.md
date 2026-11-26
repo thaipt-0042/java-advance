@@ -1,8 +1,11 @@
-# Thiết kế API CRUD `/posts` và `/metrics`
+# Thiết kế API
 
-Phạm vi: issue #4 (P1-03). Swagger UI (profile `dev`): http://localhost:8080/swagger-ui.html
+- **Đã làm** (issue #4): API CRUD `/api/v1/posts`, `/api/v1/metrics` và định dạng lỗi chung, hai mục đầu của file này.
+- **Dự kiến**: các API và trang của những giai đoạn sau, mục [API dự kiến](#api-dự-kiến). Chưa có code; quyền truy cập theo `cau-hoi-lam-ro.md` (Q1, đã chốt).
 
-## Endpoint
+Swagger UI (profile `dev`): http://localhost:8080/swagger-ui.html
+
+## Endpoint CRUD (đã làm, #4)
 
 | Method | Path | Mô tả | Thành công | Lỗi chính |
 |---|---|---|---|---|
@@ -46,7 +49,7 @@ Hai request cùng lúc trên một dòng không được thành 500:
 
 `ConcurrentDeleteApiTests` tái hiện các trường hợp này bằng 2 luồng: xóa dòng trong một transaction chưa commit, chờ đến khi MySQL báo request đang đợi khóa dòng đó (`performance_schema.data_lock_waits`), rồi mới commit. `ConcurrentWriteApiTests` giả lập trường hợp trùng bằng `@MockitoSpyBean`.
 
-## Định dạng lỗi
+## Định dạng lỗi (đã làm, #4)
 
 Mọi lỗi đều trả [`ProblemDetail`](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`) kèm `code`; lỗi validation có thêm `errors`:
 
@@ -76,3 +79,101 @@ Mọi lỗi đều trả [`ProblemDetail`](https://www.rfc-editor.org/rfc/rfc945
 - `message` trong `errors` là message mặc định của Bean Validation (tiếng Anh, Hibernate Validator không có bản tiếng Việt). Client nên dựa vào `field` và `code`.
 - Body có danh sách thì dùng `List<@NotNull @Valid ...>` để phần tử `null` bị chặn ở validation. API ở issue này chưa có body dạng danh sách; quy tắc này áp dụng cho import ở #6.
 - **Lưu ý cho #8 (Spring Security):** handler `Exception` chung sẽ biến `AccessDeniedException`/`AuthenticationException` ném từ controller (ví dụ `@PreAuthorize`) thành 500. Khi thêm security phải thêm handler riêng trả 403/401 cùng format, kèm test user thiếu quyền.
+
+## API dự kiến
+
+Theo cùng quy ước với phần đã làm: tiền tố `/api/v1`, DTO, lỗi dạng `ProblemDetail` + `code`, thời gian ISO-8601 UTC; tham số dạng ngày (`LocalDate`) hiểu theo giờ Việt Nam. Đề ghi đường dẫn không có tiền tố (`/import-posts`, `/export-report`, `/chart-data`), xem "Cần báo mentor" trong `cau-hoi-lam-ro.md`.
+
+### Quyền sau khi có Spring Security (#8)
+
+| Nhóm | Quyền (đã chốt, Q1) |
+|---|---|
+| `GET /api/v1/**`, `GET /api/v1/export-report` | User đã đăng nhập (`USER`, `ADMIN`) |
+| `POST`/`PUT`/`DELETE` `/api/v1/posts/**`, `/api/v1/metrics/**`, `POST /api/v1/import-posts`, `POST /api/v1/jobs/update-metrics` | `ADMIN` |
+| Chưa đăng nhập | 401, `code` `UNAUTHORIZED` |
+| Thiếu quyền | 403, `code` `FORBIDDEN` |
+| Thiếu hoặc sai CSRF token ở request thay đổi dữ liệu | 403, `code` `FORBIDDEN` |
+
+401/403 của API trả JSON cùng format lỗi; trang web thì chuyển về `/login`. Lỗi nghiệp vụ không dùng `AccessDeniedException` để client nhận đúng câu báo lỗi.
+
+### Import bài viết (#6)
+
+`POST /api/v1/import-posts`, `multipart/form-data`, trường `file` (`.xlsx`), cần CSRF token trong header.
+
+| Kết quả | Status | Body |
+|---|---|---|
+| Thành công | 200 | `{batchId, totalRows, createdPosts, updatedPosts, snapshotsCreated, capturedAt}` |
+| Có dòng lỗi (không ghi gì, Q4) | 422 `VALIDATION` | `errors`: `[{row, column, message}]`, `row` là số dòng trong Excel |
+| Không phải file `.xlsx` đọc được, thiếu cột bắt buộc, sai tên cột | 400 `BAD_REQUEST` | |
+| File quá giới hạn (5MB) | 413 `CONTENT_TOO_LARGE` | tên status của Spring 7 cho 413 |
+| Quá số dòng cho phép (5.000) | 422 `VALIDATION` | `errors` rỗng, `detail` ghi số dòng |
+| Một bài mới trong file vừa được request khác tạo, sau khi import đã kiểm tra | 409 `CONFLICT` | ràng buộc UNIQUE chặn, không ghi gì |
+
+Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform` thì phân biệt như API): `platform`, `externalId`, `accountName` bắt buộc; `url`, `content`, `publishedAt` tùy chọn; `likes`, `shares`, `comments`, `followers` tùy chọn nhưng có một thì phải có đủ cả bốn. Giới hạn độ dài giống DTO của `/posts`. Kiểm tra trùng `(platform, externalId)` trong cùng file.
+
+- Gửi `IMPORT_COMPLETED` (#12) sau khi commit.
+- File quá lớn phải nhận được 413 chứ không bị đứt kết nối: đặt `server.tomcat.max-swallow-size` lớn hơn giới hạn upload, test với file lớn hơn giới hạn thật (reviewer repo cũ đã nhắc).
+
+### Xuất báo cáo (#7)
+
+`GET /api/v1/export-report?from=2026-11-01&to=2026-11-30&platform=FACEBOOK` (mọi tham số tùy chọn; `from`/`to` là ngày `publishedAt` theo giờ Việt Nam, bao gồm cả hai đầu, tối đa 366 ngày).
+
+- 200, `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment; filename="social-report-2026-11-20.xlsx"` (ngày xuất theo giờ Việt Nam).
+- Nội dung đề xuất (Q11): sheet "Posts" (mỗi bài kèm snapshot mới nhất), sheet "Daily" (thống kê theo ngày).
+- `from` sau `to` hoặc khoảng quá dài: 422.
+
+### Chạy job thủ công (#10, #11)
+
+`POST /api/v1/jobs/update-metrics` (`ADMIN`, CSRF).
+
+- 202 `{runId}`: đã bắt đầu, chạy nền.
+- 409 `CONFLICT`: đang có lần chạy chưa xong (đề xuất, Q6).
+
+`GET /api/v1/jobs/update-metrics/latest`: lần chạy gần nhất `{runId, status, triggerType, startedAt, finishedAt, accountsTotal, accountsFailed}` và `lastUpdatedAt` (lần `SUCCEEDED`/`PARTIAL` gần nhất); 200 kèm `null` các trường khi chưa chạy lần nào.
+
+### Dữ liệu biểu đồ (#13)
+
+`GET /api/v1/chart-data?from=2026-11-14&to=2026-11-20&platform=TWITTER` (`from`/`to` là ngày theo giờ Việt Nam, bao gồm cả hai đầu, mặc định 7 ngày gần nhất, tối đa 366 ngày; `platform` tùy chọn).
+
+```json
+{
+  "from": "2026-11-19",
+  "to": "2026-11-20",
+  "dates": ["2026-11-19", "2026-11-20"],
+  "series": [
+    {"platform": "FACEBOOK", "postsTracked": [4, 4], "postsMeasured": [4, 3], "likes": [1200, 1350], "shares": [80, 92], "comments": [40, 41], "followers": [25050, 25060]}
+  ],
+  "lastUpdatedAt": "2026-11-20T03:00:00Z"
+}
+```
+
+- Mỗi mảng dài bằng `dates`, đọc từ `daily_platform_stats`. Mỗi số là trạng thái **tính đến hết ngày đó** (Q12, đã chốt), nên ngày thiếu snapshot không tụt về 0. `postsMeasured` < `postsTracked` nghĩa là ngày đó đo thiếu.
+- Ngày không có dòng trong bảng (app tắt cả ngày) lấy dòng gần nhất trước đó của cùng nền tảng, `postsMeasured` là 0. Vì vậy truy vấn đọc thêm dòng gần nhất trước `from`. Trước dòng đầu tiên của nền tảng thì mọi số là 0.
+- `from` sau `to` hoặc khoảng quá dài: 422.
+
+### WebSocket (#13)
+
+- Endpoint STOMP: `/ws` (SockJS). Chỉ user đã đăng nhập; frame `CONNECT` phải kèm CSRF token (lấy từ thẻ meta của trang).
+- Topic `/topic/metrics`, event dạng `{type, occurredAt, …}`, không chứa số liệu (client gọi lại `/chart-data`):
+  - `STATS_UPDATED` `{fromDate, toDate}`: thống kê các ngày trong khoảng này vừa được tính lại.
+  - `JOB_FINISHED` `{runId, status, finishedAt}`: dashboard cập nhật "Last updated time".
+
+### SOAP (#15)
+
+- Endpoint giả lập (Spring-WS) trong app: `/soap/*`, WSDL tại `/soap/exchange-rates.wsdl`, operation lấy tỷ giá theo cặp tiền và ngày. Dùng tiền tố `/soap` vì `/ws` đã dành cho WebSocket.
+- Client (`WebServiceTemplate`) đọc URL và timeout từ cấu hình. SOAP fault hoặc timeout khi dashboard cần tỷ giá thì dashboard hiện "không lấy được tỷ giá", không lỗi cả trang; nếu có API trả tỷ giá thì trả 502 `BAD_GATEWAY` cùng format lỗi.
+- Dùng kết quả ở đâu: đề xuất hiển thị trên dashboard (Q7).
+
+### Trang web (Thymeleaf, #9, #11, #14)
+
+| Method | Path | Mô tả |
+|---|---|---|
+| GET | `/login` | Nút đăng nhập Facebook / X, thông báo lỗi nếu login thất bại |
+| GET | `/oauth2/authorization/{facebook\|twitter}` | Bắt đầu OAuth2 (Spring Security cung cấp) |
+| GET | `/login/oauth2/code/{facebook\|twitter}` | Callback OAuth2 (Spring Security cung cấp) |
+| POST | `/logout` | Đăng xuất (CSRF) |
+| GET | `/`, `/dashboard` | Dashboard: "Last updated time", trạng thái lần chạy gần nhất, biểu đồ, tỷ giá; admin thấy thêm nút chạy job và form import |
+| POST | `/dashboard/update-metrics` | Form Thymeleaf (trường ẩn `_csrf`), `ADMIN`: chạy job, quay lại dashboard kèm thông báo "đã bắt đầu" hoặc "job đang chạy" |
+
+- Đăng xuất và nút chạy job là form Thymeleaf submit thường (CSRF qua trường ẩn `_csrf`), đúng ý "CSRF token và form submission" của đề.
+- Import và biểu đồ dùng JS: `fetch` gửi CSRF token trong header (không gửi `_csrf` trong body multipart). Nguồn token của từng loại client: `03-kien-truc.md`, mục 3.
