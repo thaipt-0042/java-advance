@@ -28,23 +28,23 @@ Quy ước: **Đề yêu cầu** là điều đề bài ghi; **Đề xuất** l�
 
 | Mã | Tính năng | Giai đoạn của đề | Issue | Trạng thái |
 |---|---|---|---|---|
-| F1 | Project nền: cấu trúc lớp, cấu hình, logging, Swagger | Khởi tạo project | #2 | PR #1 |
-| F2 | Entity `User`, `Post`, `SocialMetric`, schema | Khởi tạo project | #3 | PR #19 |
+| F1 | Project nền: cấu trúc lớp, cấu hình, logging, Swagger | Khởi tạo project | #2 | Đã merge (PR #1) |
+| F2 | Entity `User`, `Post`, `SocialMetric`, schema | Khởi tạo project | #3 | Đã merge (PR #19) |
 | F3 | API CRUD `/posts`, `/metrics` | Khởi tạo project | #4 | PR #20 |
-| F4 | Unit test Service/Controller, `@DataJpaTest` | Unit Test + Import/Export Excel | #5 | Chưa làm |
-| F5 | Import bài viết từ Excel (`/import-posts`) | Unit Test + Import/Export Excel | #6 | Chưa làm |
-| F6 | Xuất báo cáo Excel (`/export-report`) | Unit Test + Import/Export Excel | #7 | Chưa làm |
-| F7 | Spring Security, CSRF | Bảo mật & CSRF + Social Login | #8 | Chưa làm |
+| F4 | Unit test Service/Controller, `@DataJpaTest` | Unit Test + Import/Export Excel | #5 | PR #24 |
+| F5 | Import bài viết từ Excel (`/import-posts`) | Unit Test + Import/Export Excel | #6 | PR #25 |
+| F6 | Xuất báo cáo Excel (`/export-report`) | Unit Test + Import/Export Excel | #7 | Đã làm, chờ review |
+| F7 | Spring Security, CSRF | Bảo mật & CSRF + Social Login | #8 | Đã làm, chờ review (kèm form login demo của Q2) |
 | F8 | Đăng nhập Facebook/X, lưu user và token | Bảo mật & CSRF + Social Login | #9 | Chưa làm |
-| F9 | Job `updateSocialMetricsJob` mỗi giờ, đa luồng | Background Job & MultiThread | #10 | Chưa làm |
-| F10 | Dashboard, "Last updated time", chạy job thủ công | Background Job & MultiThread | #11 | Chưa làm |
-| F11 | JMS: `IMPORT_COMPLETED` → tính lại thống kê, retry, DLQ | JMS & Queue Handling | #12 | Chưa làm |
+| F9 | Job `updateSocialMetricsJob` mỗi giờ, đa luồng | Background Job & MultiThread | #10 | Đã làm, chờ review |
+| F10 | Dashboard, "Last updated time", chạy job thủ công | Background Job & MultiThread | #11 | Đã làm, chờ review |
+| F11 | JMS: `IMPORT_COMPLETED` → tính lại thống kê, retry, DLQ | JMS & Queue Handling | #12 | Đã làm, chờ review |
 | F12 | WebSocket STOMP, `/chart-data` | WebSocket + Chart Visualization | #13 | Chưa làm |
 | F13 | Biểu đồ Chart.js cập nhật realtime | WebSocket + Chart Visualization | #14 | Chưa làm |
 | F14 | Gọi SOAP (tỷ giá giả lập) bằng Spring-WS | Spring WebService + Reflection + Tổng kết | #15 | Chưa làm |
 | F15 | Import/export generic bằng Reflection | Spring WebService + Reflection + Tổng kết | #16 | Chưa làm |
 | F16 | Integration test end-to-end, đóng gói, demo | Spring WebService + Reflection + Tổng kết | #17 | Chưa làm |
-| — | CI (GitHub Actions) | Không có trong đề | #18 | Chưa làm |
+| — | CI (GitHub Actions) | Không có trong đề | #18 | PR #23 |
 
 ## 4. Đối chiếu đề bài
 
