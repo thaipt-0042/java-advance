@@ -43,7 +43,7 @@ src/main/resources
 ```
 
 - `controller` là REST (JSON), `web` là trang Thymeleaf: hai loại có cách xử lý lỗi khác nhau (JSON so với chuyển trang), nên tách package để `GlobalExceptionHandler` chỉ áp dụng cho REST (`@RestControllerAdvice` giới hạn theo package hoặc annotation, làm ở #11).
-- `client` là ranh giới với "API Facebook/X". Đề chỉ cần bản mock; thay bằng client thật chỉ phải thêm một implementation.
+- `client` là ranh giới với "API Facebook/X". Đề chỉ cần bản mock; thay bằng client thật chỉ phải thêm một implementation. Bản mock trả số tăng dần ngẫu nhiên, độ trễ và tỷ lệ lỗi cấu hình được (đã chốt, Q6).
 - **Phụ thuộc chỉ đi một chiều** `controller`/`web`/`job`/`messaging` → `service` → `repository`/`client`; không gói nào import `job`. Vì vậy mọi phần của luồng cập nhật số liệu mà service gọi tới (`AccountMetricsUpdater` do `MetricUpdateService` gọi, `JobLauncher` do luồng chạy tay từ HTTP gọi) nằm trong `service.metrics`, còn `job` chỉ có `UpdateSocialMetricsJob` là điểm vào theo lịch. Nếu để hai class đó ở `job` thì `job` và `service` import lẫn nhau, sửa bên này phải kiểm lại bên kia.
 
 ## 2. Trách nhiệm từng lớp
@@ -70,7 +70,7 @@ src/main/resources
 - **Role** (đã chốt, Q1): `SocialOAuth2UserService` lưu/cập nhật `users` theo `(provider, provider_user_id)` mỗi lần login, gán `ROLE_ADMIN` nếu tài khoản có trong `APP_ADMIN_ACCOUNTS`, còn lại `ROLE_USER`. API ghi dữ liệu dùng `hasRole('ADMIN')`.
 - **Thông tin user từ provider**: Facebook trả user ở dạng phẳng; X (API v2) bọc user trong trường `data`, nên cần đổi lại trước khi đọc id/tên. Endpoint, scope và việc X yêu cầu PKCE: **kiểm tra khi làm #9**.
 - **Session**: `spring-boot-starter-session-jdbc`, bảng `SPRING_SESSION*` tạo bằng migration (`01-thiet-ke-csdl.md`). Session của `oauth2Login`, gồm cả `state` của lượt chuyển sang Facebook/X, nằm trên MySQL thay vì bộ nhớ Tomcat, nên restart hay deploy không đăng xuất mọi người, và khi chạy nhiều instance thì lượt quay về từ Facebook/X rơi vào instance nào cũng đọc được `state`. Đánh đổi: cookie đổi tên từ `JSESSIONID` thành `SESSION`, mỗi request có session thêm một SELECT và một UPDATE.
-- **Token**: lưu qua `JdbcOAuth2AuthorizedClientService` (bảng `oauth2_authorized_client`); không log, không trả ra API (Q8 về mã hóa).
+- **Token**: lưu qua `JdbcOAuth2AuthorizedClientService` (bảng `oauth2_authorized_client`); không log, không trả ra API. Mã hóa AES-GCM khi lưu (đã chốt, Q8), khóa từ `APP_TOKEN_ENCRYPTION_KEY`, qua row mapper / parameters mapper của service đó (kiểm tra khi làm #9).
 - **Nguồn CSRF token** (**đề yêu cầu** "CSRF token và form submission"). Từ Spring Security 6, token đưa ra trang mặc định được "mask" (mỗi lần một giá trị khác, chống tấn công BREACH, `XorCsrfTokenRequestAttributeHandler`). Mỗi loại client lấy token ở một chỗ:
   - **Form Thymeleaf** (submit thường): trường ẩn `_csrf` do Thymeleaf tự chèn. Có ít nhất hai form thật: đăng xuất (`POST /logout`) và nút "Chạy job ngay" (`POST /dashboard/update-metrics`, issue #11).
   - **JS gọi API** (`fetch` từ dashboard, Swagger UI): đọc cookie `XSRF-TOKEN` (`CookieCsrfTokenRepository`, không `HttpOnly`) và gửi lại trong header. Cookie chứa token chưa mask, nên phía server phải dùng handler cho client JS: Spring Security 7.1 có `csrf.spa()` (đã thấy trong jar 7.1.1), nhận token dạng thô ở header và dạng mask ở tham số form. Tên header (mặc định của cookie repository là `X-XSRF-TOKEN`) và thuộc tính để Swagger UI tự gửi header: **kiểm tra khi làm #8**.
@@ -80,7 +80,7 @@ src/main/resources
   - Chain web bỏ kiểm tra CSRF ở tầng HTTP **chỉ cho `/ws/**`** (`csrf.ignoringRequestMatchers("/ws/**")`). Khi mạng hay reverse proxy không cho WebSocket, SockJS chuyển sang transport HTTP (XHR, gửi frame bằng POST), mà SockJS không cho gắn header hay tham số CSRF vào các POST đó, nên bật CSRF ở đây thì mọi POST tới `/ws/**` bị 403 và biểu đồ không tự cập nhật. Tài liệu Spring Security (mục "SockJS & Relaxing CSRF") hướng dẫn đúng cách này.
   - Vẫn an toàn vì token CSRF được kiểm ở frame `CONNECT` của STOMP: không có token đúng thì không kết nối được. Mọi URL khác vẫn bật CSRF.
   - Cùng mục đó: `headers.frameOptions(sameOrigin)` để transport iframe của SockJS chạy được (mặc định Spring Security chặn mọi iframe).
-- **Login khi dev/demo** (đã chốt, Q2): profile `dev` thêm form login với tài khoản demo đọc từ `.env`; không có ở profile khác.
+- **Login khi dev/demo** (đã chốt, Q2): profile `dev` thêm form login với tài khoản demo đọc từ `.env`; không có ở profile khác. Làm ở #8 (trước #9) để các màn hình sau đăng nhập chạy thử được; tài khoản demo không có dòng trong `users`, nên `uploaded_by` / `triggered_by` để NULL.
 - `GlobalExceptionHandler` hiện có handler `Exception` chung: phải thêm handler cho `AccessDeniedException`/`AuthenticationException` trả 403/401 cùng format, nếu không chúng thành 500 (đã ghi ở `02-thiet-ke-api.md`).
 
 ## 4. Job cập nhật số liệu và đa luồng (#10)
@@ -124,7 +124,7 @@ sequenceDiagram
 
 ## 5. JMS: thống kê tổng hợp (#12)
 
-- **Broker**: ActiveMQ Artemis (đề xuất, Q10) trong `docker-compose.yml`; test dùng Testcontainers.
+- **Broker**: ActiveMQ Artemis (đã chốt, Q10) trong `docker-compose.yml`; test dùng Testcontainers.
 - **Queue** `analytics.stats-refresh`. Message JSON `{type, fromDate, batchId?, runId?}`; `fromDate` là ngày sớm nhất bị ảnh hưởng, listener tính lại từ ngày đó tới hôm nay (`01-thiet-ke-csdl.md`):
   - `IMPORT_COMPLETED` (**đề yêu cầu**) sau import, `batchId`;
   - `METRICS_UPDATED` sau mỗi lần chạy job, `runId` (đã chốt, Q5);
@@ -145,7 +145,7 @@ sequenceDiagram
 
 - Endpoint giả lập tỷ giá viết bằng Spring-WS từ XSD (`src/main/resources/xsd/exchange-rates.xsd`), class sinh bằng JAXB lúc build; phục vụ ở `/soap/*` (không dùng `/ws` vì đã dành cho WebSocket).
 - `ExchangeRateClient` dùng `WebServiceTemplate`, URL và timeout từ cấu hình (`APP_EXCHANGE_RATE_URL`, mặc định trỏ vào chính app). SOAP fault/timeout đổi thành exception của app; dashboard hiện "không lấy được tỷ giá" thay vì lỗi cả trang.
-- Kết quả dùng ở đâu: Q7.
+- Kết quả dùng ở đâu (đã chốt, Q7 = b + c): dashboard hiện tỷ giá USD → VND và tổng chi phí quảng cáo quy ra VND; file export thêm cột quy đổi và sheet tỷ giá. Tỷ giá cache trong bộ nhớ theo ngày.
 
 ## 8. Excel và Reflection (#6, #7, #16)
 
