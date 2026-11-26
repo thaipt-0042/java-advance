@@ -23,12 +23,15 @@ import com.sunasterisk.socialanalytics.dto.PageQuery;
 import com.sunasterisk.socialanalytics.dto.PageResponse;
 import com.sunasterisk.socialanalytics.exception.ConflictException;
 import com.sunasterisk.socialanalytics.exception.ResourceNotFoundException;
+import com.sunasterisk.socialanalytics.security.SecurityConfig;
 import com.sunasterisk.socialanalytics.service.SocialMetricService;
+import com.sunasterisk.socialanalytics.support.AdminRequests;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -38,6 +41,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * {@link SocialMetricApiTests}.
  */
 @WebMvcTest(SocialMetricController.class)
+@Import({SecurityConfig.class, AdminRequests.class})
 class SocialMetricControllerTests {
 
     private static final Instant CAPTURED = Instant.parse("2026-03-01T01:00:00Z");

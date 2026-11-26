@@ -10,6 +10,7 @@ Mini project của khóa **Java Spring Boot – Advance**: ứng dụng web giú
 | Build | Maven (wrapper `./mvnw`) |
 | Database | MySQL 8.4 (JPA / Hibernate), migration bằng Flyway |
 | API Docs | springdoc-openapi (Swagger UI) |
+| Security | Spring Security 7 (form login demo ở `dev`, CSRF) |
 | Excel | Apache POI (`poi-ooxml`) |
 | Logging | SLF4J + Logback (`logback-spring.xml`) |
 | Testing | JUnit 5 + Mockito + MockMvc, Testcontainers (MySQL) |
@@ -41,7 +42,8 @@ docs/02-thiet-ke-api.md           # API CRUD /posts, /metrics và format lỗi
 Yêu cầu: JDK 21+, Docker.
 
 ```bash
-# 1. Tạo file cấu hình local (app và Docker Compose cùng đọc file này)
+# 1. Tạo file cấu hình local (app và Docker Compose cùng đọc file này),
+#    rồi đặt APP_DEMO_ADMIN_PASSWORD, APP_DEMO_USER_PASSWORD (bắt buộc với profile dev)
 cp .env.example .env
 
 # 2. Khởi động MySQL
@@ -51,6 +53,7 @@ docker compose up -d
 ./mvnw spring-boot:run
 ```
 
+- Đăng nhập (chỉ profile `dev`): http://localhost:8080/login, tài khoản `demo-admin` hoặc `demo-user` (xem "Đăng nhập và quyền")
 - Health: http://localhost:8080/actuator/health
 - Swagger UI (chỉ profile `dev`): http://localhost:8080/swagger-ui.html
 - OpenAPI JSON (chỉ profile `dev`): http://localhost:8080/v3/api-docs
@@ -61,10 +64,32 @@ docker compose up -d
 | Profile | Khác biệt |
 |---|---|
 | (mặc định) | Flyway tạo/cập nhật schema, Hibernate `validate`; tắt Swagger/OpenAPI; log `INFO` |
-| `dev` | như mặc định, thêm: bật Swagger/OpenAPI, seed dữ liệu mẫu khi DB trống, log package app ở `DEBUG` |
-| `test` | MySQL 8.4 qua Testcontainers, chỉ log ra console |
+| `dev` | như mặc định, thêm: bật Swagger/OpenAPI, form đăng nhập demo, seed dữ liệu mẫu khi DB trống, log package app ở `DEBUG` |
+| `test` | MySQL 8.4 qua Testcontainers, form đăng nhập demo với mật khẩu cố định, chỉ log ra console |
 
-Các biến cấu hình (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `PORT`, `FORWARD_HEADERS_STRATEGY`, `APP_TIME_ZONE`, `SPRING_PROFILES_ACTIVE`) xem trong `.env.example`.
+Các biến cấu hình (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `PORT`, `FORWARD_HEADERS_STRATEGY`, `APP_TIME_ZONE`, `APP_DEMO_ADMIN_PASSWORD`, `APP_DEMO_USER_PASSWORD`, `SPRING_PROFILES_ACTIVE`) xem trong `.env.example`.
+
+### Đăng nhập và quyền
+
+- **Đăng nhập:** profile `dev` có form đăng nhập demo ở `/login` (trang mặc định của Spring Security) với hai tài khoản: `demo-admin` (`ADMIN`) và `demo-user` (`USER`), mật khẩu đặt trong `.env` (tối thiểu 8 ký tự; thiếu thì app không khởi động). Profile khác chưa có cách đăng nhập cho tới khi có đăng nhập Facebook/X (#9).
+- **Quyền** (`docs/cau-hoi-lam-ro.md` Q1): đã đăng nhập thì đọc được mọi API `GET` (kể cả export); tạo/sửa/xóa, import và các lệnh khác chỉ `ADMIN`. Đường dẫn không khai báo thì bị từ chối.
+- **Lỗi:** API chưa đăng nhập trả 401 `UNAUTHORIZED`, không đủ quyền hoặc thiếu CSRF token trả 403 `FORBIDDEN`, cùng format JSON với các lỗi khác. Trang web chưa đăng nhập thì chuyển về `/login`.
+- **CSRF:** mọi request thay đổi dữ liệu cần token. Token nằm trong cookie `XSRF-TOKEN` (JavaScript đọc được); gọi API thì gửi lại giá trị đó trong header `X-XSRF-TOKEN`. API chỉ nhận token qua header, không nhận trường `_csrf` (kể cả upload multipart). Form của trang web (đăng nhập, đăng xuất) gửi trường ẩn `_csrf`. Swagger UI tự gửi header này.
+
+Gọi API bằng `curl` (profile `dev`):
+
+```bash
+# Lấy cookie phiên và token của trang đăng nhập, rồi đăng nhập
+curl -s -c cookies.txt http://localhost:8080/login \
+  | grep -o 'name="_csrf" type="hidden" value="[^"]*"' | sed 's/.*value="//; s/"$//' > csrf.txt
+curl -s -b cookies.txt -c cookies.txt -d "username=demo-admin&password=$APP_DEMO_ADMIN_PASSWORD&_csrf=$(cat csrf.txt)" \
+  http://localhost:8080/login
+# Đọc dữ liệu: chỉ cần cookie (lần gọi này cũng cấp cookie XSRF-TOKEN mới)
+curl -s -b cookies.txt -c cookies.txt "http://localhost:8080/api/v1/posts?size=5"
+# Ghi dữ liệu: gửi kèm token trong header
+curl -s -b cookies.txt -H "X-XSRF-TOKEN: $(awk '$6 == "XSRF-TOKEN" {print $7}' cookies.txt)" \
+  -F "file=@posts.xlsx" http://localhost:8080/api/v1/import-posts
+```
 
 Schema thay đổi bằng cách thêm file migration mới (`V2__...sql`), không sửa file đã chạy.
 
@@ -73,7 +98,8 @@ Schema thay đổi bằng cách thêm file migration mới (`V2__...sql`), khôn
 `POST /api/v1/import-posts`, `multipart/form-data`, trường `file` là file `.xlsx`:
 
 ```bash
-curl -F "file=@posts.xlsx" http://localhost:8080/api/v1/import-posts
+# Cần đăng nhập ADMIN và header X-XSRF-TOKEN, xem "Đăng nhập và quyền"
+curl -b cookies.txt -H "X-XSRF-TOKEN: ..." -F "file=@posts.xlsx" http://localhost:8080/api/v1/import-posts
 ```
 
 **File:** đọc sheet đầu tiên; dòng 1 là tiêu đề. Cột nhận theo tên (không phân biệt hoa thường, thứ tự tùy ý); cột lạ hoặc trùng tên thì từ chối cả file. Dòng trống bị bỏ qua.
@@ -102,7 +128,8 @@ curl -F "file=@posts.xlsx" http://localhost:8080/api/v1/import-posts
 `GET /api/v1/export-report`, trả file `social-report-<ngày xuất>.xlsx`:
 
 ```bash
-curl -OJ "http://localhost:8080/api/v1/export-report?from=2026-11-01&to=2026-11-30&platform=FACEBOOK"
+# Cần đăng nhập (USER hoặc ADMIN)
+curl -b cookies.txt -OJ "http://localhost:8080/api/v1/export-report?from=2026-11-01&to=2026-11-30&platform=FACEBOOK"
 ```
 
 - Tham số đều tùy chọn: `from` / `to` là ngày đăng bài (`publishedAt`) theo giờ `APP_TIME_ZONE`, bao gồm cả hai đầu, tối đa 366 ngày; `platform` là `FACEBOOK` hoặc `TWITTER`. Có `from` hoặc `to` thì bài không có ngày đăng bị bỏ.
@@ -121,11 +148,12 @@ curl -OJ "http://localhost:8080/api/v1/export-report?from=2026-11-01&to=2026-11-
 | Loại | Ở đâu | Cách test |
 |---|---|---|
 | Unit test service | `service/*ServiceTests` | JUnit 5 + Mockito, repository được mock; không cần Spring hay DB |
-| Test controller | `controller/*ControllerTests` | `@WebMvcTest` + MockMvc, service là `@MockitoBean`: binding tham số, validation, status, format lỗi |
+| Test controller | `controller/*ControllerTests` | `@WebMvcTest` + MockMvc, service là `@MockitoBean`: binding tham số, validation, status, format lỗi. Request mặc định là `ADMIN` kèm CSRF header (`support/AdminRequests`) |
 | Test repository | `repository/*RepositoryTests` | `@DataJpaTest` trên MySQL thật, mỗi test rollback: query tự viết, ràng buộc của schema |
-| Test API đầy đủ | `controller/*ApiTests` | `@SpringBootTest` + MockMvc trên MySQL thật, không rollback (mỗi request commit như production); gồm cả test hai request chen nhau |
+| Test API đầy đủ | `controller/*ApiTests` | `@SpringBootTest` + MockMvc trên MySQL thật, không rollback (mỗi request commit như production); gồm cả test hai request chen nhau. Cũng chạy với `support/AdminRequests` |
 | Đọc / ghi Excel | `excel/ExcelReaderTests`, `ExcelWriterTests` | Unit test, file `.xlsx` tạo và đọc lại trong bộ nhớ (`support/Xlsx`, không commit file nhị phân) |
-| Server thật | `controller/ForwardedHeadersApiTests`, `ImportUploadLimitApiTests` | `RANDOM_PORT` + `java.net.http`: những gì Tomcat làm mà MockMvc bỏ qua (header proxy, giới hạn upload) |
+| Quyền truy cập | `security/SecurityConfigTests`, `DemoLoginDisabledTests` | `@WebMvcTest` với cấu hình security thật: 401/403, CSRF, đường dẫn không khai báo, đăng nhập demo |
+| Server thật | `controller/ForwardedHeadersApiTests`, `ImportUploadLimitApiTests`, `security/LoginFlowApiTests` | `RANDOM_PORT` + `java.net.http` (`support/LoginSession` đăng nhập như trình duyệt): những gì Tomcat làm mà MockMvc bỏ qua (header proxy, giới hạn upload, cookie CSRF) |
 
 Test dùng DB chạy trên MySQL 8.4 thật qua Testcontainers nên cần Docker đang chạy (không cần `docker compose up`). Một container dùng chung cho cả lượt test. JaCoCo chỉ báo cáo, chưa đặt ngưỡng coverage tối thiểu.
 

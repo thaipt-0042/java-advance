@@ -25,12 +25,15 @@ import com.sunasterisk.socialanalytics.dto.PostUpdateRequest;
 import com.sunasterisk.socialanalytics.entity.SocialPlatform;
 import com.sunasterisk.socialanalytics.exception.ConflictException;
 import com.sunasterisk.socialanalytics.exception.ResourceNotFoundException;
+import com.sunasterisk.socialanalytics.security.SecurityConfig;
 import com.sunasterisk.socialanalytics.service.PostService;
+import com.sunasterisk.socialanalytics.support.AdminRequests;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -41,6 +44,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * mocked. The full stack on MySQL is covered by {@link PostApiTests}.
  */
 @WebMvcTest(PostController.class)
+@Import({SecurityConfig.class, AdminRequests.class})
 class PostControllerTests {
 
     private static final Instant CREATED = Instant.parse("2026-03-01T03:00:00Z");

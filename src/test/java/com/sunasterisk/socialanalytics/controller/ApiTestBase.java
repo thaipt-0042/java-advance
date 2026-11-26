@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import com.sunasterisk.socialanalytics.support.AdminRequests;
 import com.sunasterisk.socialanalytics.support.TestcontainersConfiguration;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,7 +23,7 @@ import org.springframework.test.web.servlet.MockMvc;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, AdminRequests.class})
 @ActiveProfiles("test")
 abstract class ApiTestBase {
 
