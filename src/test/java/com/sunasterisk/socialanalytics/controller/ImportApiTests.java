@@ -43,7 +43,8 @@ class ImportApiTests extends ApiTestBase {
         while (jdbcTemplate.queryForObject("select stats_refreshed_at from import_batches where id = ?",
                 LocalDateTime.class, batchId) == null) {
             assertThat(Duration.ofNanos(System.nanoTime() - start)).as("statistics refreshed")
-                    .isLessThan(Duration.ofSeconds(20));
+                    // Earlier tests may leave long refreshes (an old snapshot edited: hundreds of days) in the queue.
+                    .isLessThan(Duration.ofSeconds(90));
             Thread.sleep(100);
         }
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
