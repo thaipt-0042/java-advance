@@ -7,11 +7,17 @@ import com.sunasterisk.socialanalytics.entity.Post;
 import com.sunasterisk.socialanalytics.entity.SocialMetric;
 import com.sunasterisk.socialanalytics.entity.SocialPlatform;
 import com.sunasterisk.socialanalytics.support.FixedClockConfiguration;
+import com.sunasterisk.socialanalytics.util.LikePatterns;
 import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 class PostRepositoryTests extends JpaRepositoryTestBase {
@@ -87,5 +93,101 @@ class PostRepositoryTests extends JpaRepositoryTestBase {
         Integer remaining = jdbcTemplate.queryForObject(
                 "select count(*) from social_metrics where post_id = ?", Integer.class, post.getId());
         assertThat(remaining).isZero();
+    }
+
+    @Test
+    void existsByPlatformAndExternalIdMatchesBothColumns() {
+        postRepository.saveAndFlush(new Post(SocialPlatform.FACEBOOK, "post-repo-exists", "a"));
+
+        assertThat(postRepository.existsByPlatformAndExternalId(SocialPlatform.FACEBOOK, "post-repo-exists")).isTrue();
+        assertThat(postRepository.existsByPlatformAndExternalId(SocialPlatform.TWITTER, "post-repo-exists")).isFalse();
+        assertThat(postRepository.existsByPlatformAndExternalId(SocialPlatform.FACEBOOK, "post-repo-other")).isFalse();
+    }
+
+    @Test
+    void searchFiltersByPlatformAndByKeywordInContentOrAccountName() {
+        String token = token();
+        Post inContent = postRepository.save(post(SocialPlatform.FACEBOOK, "acc", "Giảm " + token + " hôm nay"));
+        Post inAccount = postRepository.save(post(SocialPlatform.FACEBOOK, "acc-" + token, "khác"));
+        Post otherPlatform = postRepository.save(post(SocialPlatform.TWITTER, "acc", token));
+        postRepository.save(post(SocialPlatform.FACEBOOK, "acc", "không liên quan"));
+        postRepository.flush();
+        String pattern = LikePatterns.contains(token);
+
+        assertThat(search(SocialPlatform.FACEBOOK, pattern)).extracting(Post::getId)
+                .containsExactly(inAccount.getId(), inContent.getId());
+        assertThat(search(null, pattern)).extracting(Post::getId)
+                .containsExactly(otherPlatform.getId(), inAccount.getId(), inContent.getId());
+    }
+
+    @Test
+    void searchTreatsWildcardsAndEscapeCharacterLiterally() {
+        String token = token();
+        Post percent = postRepository.save(post(SocialPlatform.FACEBOOK, "acc", token + " giảm 50% hôm nay"));
+        Post bang = postRepository.save(post(SocialPlatform.FACEBOOK, "acc", token + " wow!"));
+        postRepository.save(post(SocialPlatform.FACEBOOK, "acc", token + " giảm 50k hôm nay"));
+        postRepository.flush();
+
+        assertThat(search(null, LikePatterns.contains(token + " giảm 50%"))).extracting(Post::getId)
+                .containsExactly(percent.getId());
+        // Unescaped, "_" would match any character (the "%" and the "k" above).
+        assertThat(search(null, LikePatterns.contains(token + " giảm 50_"))).isEmpty();
+        assertThat(search(null, LikePatterns.contains(token + " wow!"))).extracting(Post::getId)
+                .containsExactly(bang.getId());
+    }
+
+    @Test
+    void searchPagesWithTotalCount() {
+        String token = token();
+        for (int i = 0; i < 3; i++) {
+            postRepository.save(post(SocialPlatform.TWITTER, "acc", token + " " + i));
+        }
+        postRepository.flush();
+
+        Page<Post> page = postRepository.search(null, LikePatterns.contains(token),
+                PageRequest.of(1, 2, Sort.by(Sort.Direction.DESC, "id")));
+
+        assertThat(page.getContent()).hasSize(1);
+        assertThat(page.getTotalElements()).isEqualTo(3);
+        assertThat(page.getContent().getFirst().getContent()).isEqualTo(token + " 0");
+    }
+
+    @Test
+    void lockingReadsReturnThePostOrEmpty() {
+        Post post = postRepository.saveAndFlush(new Post(SocialPlatform.FACEBOOK, "post-repo-lock", "a"));
+        entityManager.clear();
+
+        assertThat(postRepository.findByIdForUpdate(post.getId())).get()
+                .extracting(Post::getExternalId).isEqualTo("post-repo-lock");
+        assertThat(postRepository.findByIdForShare(post.getId())).isPresent();
+        assertThat(postRepository.findByIdForUpdate(Long.MAX_VALUE)).isEmpty();
+        assertThat(postRepository.findByIdForShare(Long.MAX_VALUE)).isEmpty();
+    }
+
+    @Test
+    void deleteByIdReturningCountReportsWhetherARowWasDeleted() {
+        Post post = postRepository.saveAndFlush(new Post(SocialPlatform.FACEBOOK, "post-repo-delete-count", "a"));
+        socialMetricRepository.saveAndFlush(new SocialMetric(post, Instant.parse("2026-02-28T00:00:00Z")));
+        entityManager.clear();
+
+        assertThat(postRepository.deleteByIdReturningCount(post.getId())).isEqualTo(1);
+        assertThat(postRepository.deleteByIdReturningCount(post.getId())).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from social_metrics where post_id = ?", Integer.class, post.getId())).isZero();
+    }
+
+    private List<Post> search(SocialPlatform platform, String pattern) {
+        return postRepository.search(platform, pattern, PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "id")))
+                .getContent();
+    }
+
+    private static Post post(SocialPlatform platform, String accountName, String content) {
+        Post post = new Post(platform, "post-repo-" + UUID.randomUUID(), accountName);
+        post.setContent(content);
+        return post;
+    }
+
+    private static String token() {
+        return UUID.randomUUID().toString().substring(0, 8);
     }
 }
