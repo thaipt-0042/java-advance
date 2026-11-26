@@ -34,6 +34,7 @@ docs/01-thiet-ke-csdl.md          # thiết kế CSDL: bảng hiện có + lộ 
 docs/02-thiet-ke-api.md           # API đã làm, API dự kiến, format lỗi
 docs/03-kien-truc.md              # package, bảo mật, job, JMS, WebSocket, SOAP
 docs/cau-hoi-lam-ro.md            # điểm đề chưa rõ (chờ trả lời), điều cần báo mentor
+.github/workflows/ci.yml          # CI: ./mvnw verify trên GitHub Actions
 ```
 
 ## Chạy local
@@ -75,3 +76,5 @@ Schema thay đổi bằng cách thêm file migration mới (`V2__...sql`), khôn
 ```
 
 Test chạy trên MySQL 8.4 thật qua Testcontainers nên cần Docker đang chạy (không cần `docker compose up`). Một container dùng chung cho cả lượt test.
+
+CI (`.github/workflows/ci.yml`) chạy `./mvnw -B verify` trên GitHub Actions cho mọi PR (kể cả PR có base là nhánh feature) và mỗi lần push lên `main`. Test lỗi thì tải `surefire-reports` ở mục Artifacts của lượt chạy.
