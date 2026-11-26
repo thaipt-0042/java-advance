@@ -36,6 +36,12 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!-- Server-rendered pages (dashboard) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+
         <!-- Security: login, roles, CSRF -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
