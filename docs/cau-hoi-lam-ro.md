@@ -1,6 +1,6 @@
 # Câu hỏi cần làm rõ
 
-Các điểm đề bài chưa nói rõ. Mỗi câu ghi các phương án và **đề xuất**. **Q1–Q10, Q12 đã chốt**; Q11 **chưa có câu trả lời**, #7 đang làm theo đề xuất. Tài liệu thiết kế khác (`00`–`03`) đang viết theo đề xuất, chỗ nào phụ thuộc câu trả lời thì ghi số câu (Q…). Có câu trả lời thì cập nhật file này và các tài liệu liên quan.
+Các điểm đề bài chưa nói rõ. Mỗi câu ghi các phương án và **đề xuất**. **Tất cả Q1–Q12 đã chốt.** Tài liệu thiết kế khác (`00`–`03`) viết theo các quyết định này, chỗ nào phụ thuộc một câu thì ghi số câu (Q…).
 
 Đề bài được nhắc theo tên giai đoạn ("Khởi tạo project", "Unit Test + Import/Export Excel", "Bảo mật & CSRF + Social Login", "Background Job & MultiThread", "JMS & Queue Handling", "WebSocket + Chart Visualization", "Spring WebService + Reflection nâng cao + Tổng kết").
 
@@ -117,7 +117,7 @@ Ví dụ: 9:00 import file, bảng được tính lại. 10:00 job lấy đượ
 - `/export-report` (#7): một sheet các bài viết (lọc theo nền tảng, khoảng ngày `publishedAt` theo giờ Việt Nam), mỗi bài kèm snapshot mới nhất; một sheet thống kê theo ngày từ `daily_platform_stats`.
 - #16 làm lại phần đọc/ghi Excel thành generic: một exporter/importer cho mọi class có annotation `@ExcelColumn`, dùng chung cho import (#6) và export (#7).
 
-**Chưa chốt.** #7 làm theo đề xuất: sheet "Posts" ở #7, sheet "Daily" thêm ở #12 (khi có bảng `daily_platform_stats`). Q7 (đã chốt) thêm cột chi phí quy ra VND và sheet tỷ giá ở #15.
+**Đã chốt: theo đề xuất.** Sheet "Posts" ở #7, sheet "Daily" ở #12 (khi có bảng `daily_platform_stats`). Q7 (đã chốt) thêm cột chi phí quy ra VND và sheet tỷ giá ở #15.
 
 ## Q12. Bài không có snapshot trong ngày thì tính số nào?
 
