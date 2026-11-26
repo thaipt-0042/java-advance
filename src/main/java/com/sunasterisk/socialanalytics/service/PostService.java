@@ -34,9 +34,11 @@ public class PostService {
     private static final Sort NEWEST_FIRST = Sort.by(Sort.Direction.DESC, "id");
 
     private final PostRepository postRepository;
+    private final StatsChanges statsChanges;
 
-    public PostService(PostRepository postRepository) {
+    public PostService(PostRepository postRepository, StatsChanges statsChanges) {
         this.postRepository = postRepository;
+        this.statsChanges = statsChanges;
     }
 
     public PageResponse<PostResponse> search(PostFilter filter, PageQuery pageQuery) {
@@ -73,7 +75,12 @@ public class PostService {
             throw new ConflictException(
                     "Bài viết id = %d đã bị sửa sau khi bạn tải, hãy tải lại rồi thử lại".formatted(id));
         }
-        post.setAccountName(request.accountName().strip());
+        String accountName = request.accountName().strip();
+        if (!post.getAccountName().equals(accountName)) {
+            // Followers are summed per account: every day since the post's first snapshot changes.
+            statsChanges.postChanged(id);
+        }
+        post.setAccountName(accountName);
         post.setUrl(blankToNull(request.url()));
         post.setContent(blankToNull(request.content()));
         post.setPublishedAt(DbTime.toColumnPrecision(request.publishedAt()));
@@ -84,6 +91,10 @@ public class PostService {
     /** Deletes the post; its metrics are removed by the database ({@code ON DELETE CASCADE}). */
     @Transactional
     public void delete(Long id) {
+        // Locked first: no snapshot can be added (FOR SHARE in SocialMetricService) between reading the earliest
+        // snapshot for the statistics and the delete.
+        postRepository.findByIdForUpdate(id).orElseThrow(() -> notFound(id));
+        statsChanges.postChanged(id);
         if (postRepository.deleteByIdReturningCount(id) == 0) {
             throw notFound(id);
         }

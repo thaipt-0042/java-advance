@@ -26,6 +26,7 @@ import com.sunasterisk.socialanalytics.exception.ResourceNotFoundException;
 import com.sunasterisk.socialanalytics.repository.PostRepository;
 import com.sunasterisk.socialanalytics.repository.SocialMetricRepository;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,9 @@ class SocialMetricServiceTests {
 
     @Mock
     private PostRepository postRepository;
+
+    @Mock
+    private StatsChanges statsChanges;
 
     @InjectMocks
     private SocialMetricService metricService;
@@ -126,6 +130,7 @@ class SocialMetricServiceTests {
 
         assertThat(response).isEqualTo(new MetricResponse(12L, 5L, 1, 2, 3, 4, truncated, CREATED, CREATED));
         verify(postRepository, never()).findById(anyLong());
+        verify(statsChanges).snapshotsChanged(truncated);
     }
 
     @Test
@@ -162,6 +167,8 @@ class SocialMetricServiceTests {
                         UPDATED.plusNanos(500)));
 
         assertThat(response).isEqualTo(new MetricResponse(11L, 5L, 200, 20, 10, 5500, newTime, CREATED, UPDATED));
+        // The day it left and the day it joined.
+        verify(statsChanges).snapshotsChanged(Instant.parse("2026-03-01T01:00:00Z"), newTime);
     }
 
     @Test
@@ -201,14 +208,20 @@ class SocialMetricServiceTests {
     }
 
     @Test
-    void deleteChecksDeletedRowCount() {
-        when(metricRepository.deleteByIdReturningCount(11L)).thenReturn(1);
-        when(metricRepository.deleteByIdReturningCount(99L)).thenReturn(0);
+    void deleteReadsTheLockedSnapshotTimeForTheStatistics() {
+        // Stored as UTC wall-clock time
+        when(metricRepository.findCapturedAtForUpdate(11L))
+                .thenReturn(Optional.of(LocalDateTime.of(2026, 3, 1, 3, 0)));
+        when(metricRepository.findCapturedAtForUpdate(99L)).thenReturn(Optional.empty());
 
         metricService.delete(11L);
+        verify(metricRepository).deleteByIdReturningCount(11L);
+        verify(statsChanges).snapshotsChanged(Instant.parse("2026-03-01T03:00:00Z"));
+
         assertThatThrownBy(() -> metricService.delete(99L))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Không tìm thấy snapshot có id = 99");
+        verify(metricRepository, never()).deleteByIdReturningCount(99L);
     }
 
     private SocialMetric sampleMetric(long id) {

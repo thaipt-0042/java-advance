@@ -19,6 +19,8 @@ import com.sunasterisk.socialanalytics.entity.SocialPlatform;
 import com.sunasterisk.socialanalytics.excel.ExcelExport;
 import com.sunasterisk.socialanalytics.excel.ExcelWriter;
 import com.sunasterisk.socialanalytics.exception.UnprocessableException;
+import com.sunasterisk.socialanalytics.repository.DailyStatsRepository;
+import com.sunasterisk.socialanalytics.repository.DailyStatsRepository.DailyStats;
 import com.sunasterisk.socialanalytics.repository.ReportRepository;
 import com.sunasterisk.socialanalytics.repository.ReportRepository.ReportEntry;
 import java.io.ByteArrayInputStream;
@@ -30,6 +32,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.stream.LongStream;
+import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
@@ -42,7 +45,9 @@ class ReportServiceTests {
             ZoneId.of("Asia/Ho_Chi_Minh"));
 
     private final ReportRepository repository = mock(ReportRepository.class);
-    private final ReportService service = new ReportService(repository, new ExcelWriter(CLOCK), CLOCK);
+    private final DailyStatsRepository dailyStatsRepository = mock(DailyStatsRepository.class);
+    private final ReportService service = new ReportService(repository, dailyStatsRepository, new ExcelWriter(CLOCK),
+            CLOCK);
 
     @Test
     void filtersPublishedAtByLocalDaysBothIncluded() throws IOException {
@@ -97,6 +102,30 @@ class ReportServiceTests {
     }
 
     @Test
+    void dailySheetHoldsTheStatisticsOfTheFilteredDays() throws IOException {
+        LocalDate from = LocalDate.of(2026, 2, 1);
+        LocalDate to = LocalDate.of(2026, 2, 2);
+        when(dailyStatsRepository.find(from, to, SocialPlatform.TWITTER)).thenReturn(List.of(
+                new DailyStats(from, SocialPlatform.TWITTER, 4, 3, 1200, 80, 40, 25050),
+                new DailyStats(to, SocialPlatform.TWITTER, 4, 4, 1350, 92, 41, 25060)));
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ExportedReport report = service.export(new ReportFilter(from, to, SocialPlatform.TWITTER))) {
+            report.write(out);
+        }
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(out.toByteArray()))) {
+            Sheet daily = workbook.getSheet("Daily");
+            assertThat(daily.getRow(0)).extracting(Cell::getStringCellValue).containsExactly("date", "platform",
+                    "postsTracked", "postsMeasured", "likes", "shares", "comments", "followers");
+            assertThat(daily.getLastRowNum()).isEqualTo(2);
+            assertThat(daily.getRow(2).getCell(0).getLocalDateTimeCellValue().toLocalDate()).isEqualTo(to);
+            assertThat(daily.getRow(2).getCell(4).getNumericCellValue()).isEqualTo(1350);
+            assertThat(daily.getRow(2).getCell(7).getNumericCellValue()).isEqualTo(25060);
+        }
+    }
+
+    @Test
     void refusesMoreRowsThanTheLimitBeforeReadingThem() {
         when(repository.countPosts(any(), any(), any())).thenReturn(ReportService.MAX_ROWS + 1L);
 
@@ -114,7 +143,7 @@ class ReportServiceTests {
         doThrow(new IOException("disk full")).when(file).close();
         when(repository.findPage(any(), any(), any(), anyLong(), anyInt()))
                 .thenThrow(new QueryTimeoutException("timeout"));
-        ReportService failing = new ReportService(repository, writer, CLOCK);
+        ReportService failing = new ReportService(repository, dailyStatsRepository, writer, CLOCK);
 
         assertThatThrownBy(() -> failing.export(new ReportFilter(null, null, null)))
                 .isInstanceOf(QueryTimeoutException.class)

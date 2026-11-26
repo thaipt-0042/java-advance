@@ -48,10 +48,12 @@ import org.springframework.transaction.support.TransactionTemplate;
  *       is updated from the file. Only columns present in the file are updated: a file without a {@code content}
  *       column keeps the stored content, while an empty cell in a present column clears it, like PUT.</li>
  *   <li>Every snapshot of one import has the same {@code capturedAt}: the import time.</li>
+ *   <li>Once committed, {@code IMPORT_COMPLETED} is sent so the statistics are recomputed (#12).</li>
  * </ul>
  *
  * <p>The file is read and validated outside the transaction; the writes then run in one short transaction at
- * READ COMMITTED. New posts and snapshots are inserted in JDBC batches ({@link PostBulkRepository}). Existing posts are read with a row lock (one query per platform), so a concurrent delete can't
+ * READ COMMITTED. New posts and snapshots are inserted in JDBC batches ({@link PostBulkRepository}). Existing
+ * posts are read with a row lock (one query per platform), so a concurrent delete can't
  * turn the update into a 500. READ COMMITTED avoids the gap locks REPEATABLE READ would take for the external ids
  * that don't exist yet: two imports adding posts at the same time would otherwise deadlock. If both add the same
  * new post, the second one fails on the UNIQUE constraint (409) and none of its rows is saved.
@@ -67,16 +69,18 @@ public class PostImportService {
     private final PostRepository postRepository;
     private final PostBulkRepository bulkRepository;
     private final ImportBatchRepository batchRepository;
+    private final StatsChanges statsChanges;
     private final Clock clock;
     private final TransactionTemplate transaction;
 
     public PostImportService(ExcelReader excelReader, PostRepository postRepository,
-            PostBulkRepository bulkRepository, ImportBatchRepository batchRepository, Clock clock,
-            PlatformTransactionManager transactionManager) {
+            PostBulkRepository bulkRepository, ImportBatchRepository batchRepository, StatsChanges statsChanges,
+            Clock clock, PlatformTransactionManager transactionManager) {
         this.excelReader = excelReader;
         this.postRepository = postRepository;
         this.bulkRepository = bulkRepository;
         this.batchRepository = batchRepository;
+        this.statsChanges = statsChanges;
         this.clock = clock;
         this.transaction = new TransactionTemplate(transactionManager);
         this.transaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
@@ -117,13 +121,19 @@ public class PostImportService {
         // created_at / updated_at of the inserted rows, and captured_at of every snapshot of this import
         Instant now = DbTime.toColumnPrecision(clock.instant());
         List<Post> newPosts = new ArrayList<>();
+        List<Long> accountChanged = new ArrayList<>();
         int updated = 0;
         for (ExcelRow<PostImportRow> excelRow : sheet.rows()) {
             PostImportRow row = excelRow.value();
             Post post = existing.get(keys.of(row));
             if (post == null) {
                 newPosts.add(newPost(row));
-            } else if (applyChanges(post, row, sheet.columns())) {
+                continue;
+            }
+            if (!post.getAccountName().equals(row.accountName())) {
+                accountChanged.add(post.getId());
+            }
+            if (applyChanges(post, row, sheet.columns())) {
                 // Written by JPA dirty checking at commit.
                 updated++;
             }
@@ -135,8 +145,11 @@ public class PostImportService {
         if (!snapshots.isEmpty()) {
             bulkRepository.insertSnapshots(snapshots, now, now);
         }
-        return batchRepository.save(new ImportBatch(fileName, sheet.totalRows(), newPosts.size(), updated,
-                snapshots.size(), snapshots.isEmpty() ? null : now));
+        ImportBatch batch = batchRepository.save(new ImportBatch(fileName, sheet.totalRows(), newPosts.size(),
+                updated, snapshots.size(), snapshots.isEmpty() ? null : now));
+        // Sent after commit (IMPORT_COMPLETED): today's snapshots, and the past of posts that changed account.
+        statsChanges.importCompleted(batch.getId(), now, accountChanged);
+        return batch;
     }
 
     /** Ids of every post of the file: the existing ones, and the new ones read back after the insert. */

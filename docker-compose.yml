@@ -17,5 +17,20 @@ services:
       timeout: 5s
       retries: 5
 
+  # JMS broker (Apache Artemis, formerly ActiveMQ Artemis). Same version as the client managed by Spring Boot.
+  # Queues, redelivery and dead letter queue: docker/artemis/broker.properties (copied over the image's settings).
+  artemis:
+    image: apache/artemis:2.53.0
+    container_name: social-analytics-artemis
+    environment:
+      ARTEMIS_USER: ${ARTEMIS_USER:-artemis}
+      ARTEMIS_PASSWORD: ${ARTEMIS_PASSWORD:-artemis}
+    ports:
+      - "${ARTEMIS_PORT:-61616}:61616"
+    volumes:
+      - ./docker/artemis/broker.properties:/var/lib/artemis-instance/etc-override/broker.properties:ro
+      - artemis-data:/var/lib/artemis-instance/data
+
 volumes:
   mysql-data:
+  artemis-data:

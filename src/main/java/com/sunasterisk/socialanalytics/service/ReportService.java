@@ -1,11 +1,13 @@
 package com.sunasterisk.socialanalytics.service;
 
+import com.sunasterisk.socialanalytics.dto.DailyReportRow;
 import com.sunasterisk.socialanalytics.dto.PostReportRow;
 import com.sunasterisk.socialanalytics.dto.ReportFilter;
 import com.sunasterisk.socialanalytics.excel.ExcelExport;
 import com.sunasterisk.socialanalytics.excel.ExcelWriter;
 import com.sunasterisk.socialanalytics.excel.ExcelWriter.SheetWriter;
 import com.sunasterisk.socialanalytics.exception.UnprocessableException;
+import com.sunasterisk.socialanalytics.repository.DailyStatsRepository;
 import com.sunasterisk.socialanalytics.repository.ReportRepository;
 import com.sunasterisk.socialanalytics.repository.ReportRepository.ReportEntry;
 import java.io.IOException;
@@ -20,7 +22,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Builds the Excel report: sheet "Posts", every post matching the filter with its latest snapshot, by id.
+ * Builds the Excel report ({@code docs/cau-hoi-lam-ro.md} Q11):
+ *
+ * <ul>
+ *   <li>"Posts": every post matching the filter with its latest snapshot, by id.</li>
+ *   <li>"Daily": the statistics of each day of {@code [from, to]} (all days when not given) and platform, as
+ *       recomputed by the JMS listener ({@code daily_platform_stats}).</li>
+ * </ul>
  *
  * <p>The rows are read in pages inside one read-only transaction, so the count and every page see the same
  * snapshot of the database (MySQL consistent read), even if posts are added meanwhile. The file is built before
@@ -38,11 +46,14 @@ public class ReportService {
     static final int PAGE_SIZE = 1_000;
 
     private final ReportRepository reportRepository;
+    private final DailyStatsRepository dailyStatsRepository;
     private final ExcelWriter excelWriter;
     private final Clock clock;
 
-    public ReportService(ReportRepository reportRepository, ExcelWriter excelWriter, Clock clock) {
+    public ReportService(ReportRepository reportRepository, DailyStatsRepository dailyStatsRepository,
+            ExcelWriter excelWriter, Clock clock) {
         this.reportRepository = reportRepository;
+        this.dailyStatsRepository = dailyStatsRepository;
         this.excelWriter = excelWriter;
         this.clock = clock;
     }
@@ -69,7 +80,10 @@ public class ReportService {
                     afterId = page.getLast().postId();
                 }
             } while (page.size() == PAGE_SIZE);
-            log.info("Exported {} posts (filter {})", posts.rowCount(), filter);
+            SheetWriter<DailyReportRow> daily = excelWriter.addSheet(file, "Daily", DailyReportRow.class);
+            dailyStatsRepository.find(filter.from(), filter.to(), filter.platform())
+                    .forEach(stats -> daily.append(DailyReportRow.from(stats)));
+            log.info("Exported {} posts and {} daily rows (filter {})", posts.rowCount(), daily.rowCount(), filter);
             return new ExportedReport("social-report-%s.xlsx".formatted(LocalDate.now(clock)), file);
         } catch (RuntimeException ex) {
             closeQuietly(file, ex);

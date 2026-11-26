@@ -14,6 +14,7 @@ Mini project của khóa **Java Spring Boot – Advance**: ứng dụng web giú
 | Giao diện | Thymeleaf (`templates/`), CSS trong `static/css` |
 | Excel | Apache POI (`poi-ooxml`) |
 | Background job | `@Scheduled` + `@Async` (`ThreadPoolTaskExecutor`), ShedLock trên MySQL |
+| Messaging | JMS, Apache Artemis 2.53 (trước đây là ActiveMQ Artemis), chạy bằng Docker Compose |
 | Logging | SLF4J + Logback (`logback-spring.xml`) |
 | Testing | JUnit 5 + Mockito + MockMvc, Testcontainers (MySQL) |
 
@@ -30,6 +31,7 @@ src/main/java/com/sunasterisk/socialanalytics
 │   └── metrics/   # job cập nhật số liệu (chạy song song từng tài khoản)
 ├── job/           # lịch chạy (@Scheduled), chỉ gọi vào service
 ├── client/        # API Facebook / X (bản giả lập)
+├── messaging/     # JMS: gửi message sau commit, listener tính lại thống kê, log DLQ
 ├── repository/    # Spring Data JPA repositories
 ├── dto/           # request/response DTO
 ├── entity/        # JPA entities
@@ -53,7 +55,7 @@ Yêu cầu: JDK 21+, Docker.
 #    rồi đặt APP_DEMO_ADMIN_PASSWORD, APP_DEMO_USER_PASSWORD (bắt buộc với profile dev)
 cp .env.example .env
 
-# 2. Khởi động MySQL
+# 2. Khởi động MySQL và broker JMS (Apache Artemis)
 docker compose up -d
 
 # 3. Chạy ứng dụng (profile dev đã bật sẵn trong .env.example)
@@ -73,9 +75,9 @@ docker compose up -d
 |---|---|
 | (mặc định) | Flyway tạo/cập nhật schema, Hibernate `validate`; tắt Swagger/OpenAPI; log `INFO` |
 | `dev` | như mặc định, thêm: bật Swagger/OpenAPI, form đăng nhập demo, seed dữ liệu mẫu khi DB trống, log package app ở `DEBUG` |
-| `test` | MySQL 8.4 qua Testcontainers, form đăng nhập demo với mật khẩu cố định, chỉ log ra console |
+| `test` | MySQL 8.4 và Artemis qua Testcontainers, form đăng nhập demo với mật khẩu cố định, chỉ log ra console |
 
-Các biến cấu hình (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `PORT`, `FORWARD_HEADERS_STRATEGY`, `APP_TIME_ZONE`, `APP_DEMO_ADMIN_PASSWORD`, `APP_DEMO_USER_PASSWORD`, `SPRING_PROFILES_ACTIVE`) xem trong `.env.example`.
+Các biến cấu hình (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `PORT`, `FORWARD_HEADERS_STRATEGY`, `APP_TIME_ZONE`, `ARTEMIS_HOST`, `ARTEMIS_PORT`, `ARTEMIS_USER`, `ARTEMIS_PASSWORD`, `METRICS_JOB_CRON`, `METRICS_JOB_THREADS`, `APP_DEMO_ADMIN_PASSWORD`, `APP_DEMO_USER_PASSWORD`, `SPRING_PROFILES_ACTIVE`) xem trong `.env.example`.
 
 ### Đăng nhập và quyền
 
@@ -142,7 +144,7 @@ curl -b cookies.txt -OJ "http://localhost:8080/api/v1/export-report?from=2026-11
 
 - Tham số đều tùy chọn: `from` / `to` là ngày đăng bài (`publishedAt`) theo giờ `APP_TIME_ZONE`, bao gồm cả hai đầu, tối đa 366 ngày; `platform` là `FACEBOOK` hoặc `TWITTER`. Có `from` hoặc `to` thì bài không có ngày đăng bị bỏ.
 - Sheet `Posts`: mỗi bài một dòng, theo thứ tự tạo, kèm **snapshot mới nhất** (`likes`, `shares`, `comments`, `followers`, `capturedAt`; trống nếu bài chưa có snapshot). Thời gian là ô ngày giờ theo giờ `APP_TIME_ZONE`. Tên cột giống file import, thêm `capturedAt`.
-- Sheet thống kê theo ngày sẽ thêm ở #12 (`docs/cau-hoi-lam-ro.md` Q11).
+- Sheet `Daily`: thống kê từng ngày trong `from`..`to` (mọi ngày nếu không lọc) và nền tảng, xem "Thống kê tổng hợp và JMS" (`docs/cau-hoi-lam-ro.md` Q11).
 - Tối đa 100.000 bài mỗi file (422, hãy thu hẹp bộ lọc). File được tạo bằng `SXSSFWorkbook`: chỉ giữ 100 dòng mỗi sheet trong bộ nhớ, phần còn lại ghi ra file tạm (nén) và được xóa sau khi gửi.
 - Nội dung bài được ghi dạng text, kể cả khi bắt đầu bằng `=`: Excel không chạy nó như công thức.
 
@@ -166,6 +168,24 @@ Job `updateSocialMetricsJob` chạy mỗi giờ (`METRICS_JOB_CRON`, mặc đị
 
 Cấu hình sai (cron, kích thước pool, `lock-at-most-for` không dài hơn `account-timeout` ít nhất 1 phút, tỷ lệ lỗi ngoài 0..1) thì app không khởi động.
 
+## Thống kê tổng hợp và JMS
+
+Bảng `daily_platform_stats`: mỗi ngày (theo `APP_TIME_ZONE`) × nền tảng một dòng. Mỗi ngày là trạng thái **tính đến hết ngày đó**: mỗi bài lấy snapshot mới nhất trước 00:00 hôm sau, nên ngày thiếu snapshot không tụt về 0 (`docs/cau-hoi-lam-ro.md` Q12). `followers` cộng theo tài khoản, không theo bài. `postsMeasured` < `postsTracked` nghĩa là ngày đó đo thiếu.
+
+Bảng được tính lại qua queue `analytics.stats-refresh` trên Apache Artemis (Q5, Q10):
+
+| Message | Gửi khi | Tính lại từ ngày |
+|---|---|---|
+| `IMPORT_COMPLETED` | import Excel xong | hôm nay, hoặc ngày snapshot đầu tiên của bài vừa đổi `accountName` |
+| `METRICS_UPDATED` | job chạy xong và có ghi snapshot | ngày bắt đầu chạy |
+| `METRICS_CHANGED` | thêm / sửa / xóa snapshot, đổi `accountName` hoặc xóa bài qua API, seed dữ liệu `dev` | ngày sớm nhất bị ảnh hưởng |
+
+- Message chỉ gửi **sau khi transaction commit** (`@TransactionalEventListener(AFTER_COMMIT)`); rollback thì không gửi. Broker không kết nối được thì lỗi được log, request vẫn thành công; thống kê cập nhật ở message kế tiếp (job mỗi giờ tính lại hôm nay).
+- Listener chạy một luồng, tính lại từng ngày từ `fromDate` tới hôm nay trong một transaction (xóa dòng của ngày rồi `INSERT … SELECT` từ dữ liệu gốc), nên nhận trùng message vẫn ra cùng kết quả. Transaction ở READ COMMITTED để `INSERT … SELECT` không khóa các dòng `posts` / `social_metrics` đang đọc.
+- Listener lỗi (kể cả message không đọc được) thì broker giao lại sau 1, 2, 4 giây; lỗi lần thứ 4 thì chuyển sang `analytics.stats-refresh.dlq` và được log `ERROR` kèm nội dung. Cấu hình ở `docker/artemis/broker.properties` (Docker Compose và test dùng chung).
+- Import xong thì `import_batches.stats_refreshed_at` được điền khi thống kê đã tính lại.
+- File export có thêm sheet `Daily` (thống kê các ngày trong `from`..`to`).
+
 ## Test
 
 ```bash
@@ -182,6 +202,7 @@ Cấu hình sai (cron, kích thước pool, `lock-at-most-for` không dài hơn 
 | Đọc / ghi Excel | `excel/ExcelReaderTests`, `ExcelWriterTests` | Unit test, file `.xlsx` tạo và đọc lại trong bộ nhớ (`support/Xlsx`, không commit file nhị phân) |
 | Job | `service/metrics/*Tests`, `client/MockSocialMetricsClientTests`, `controller/JobApiTests` | Service với Mockito (tài khoản lỗi, quá thời gian, hàng đợi đầy, khóa đang bị giữ); updater và API trên MySQL thật (bài bị xóa giữa chừng, lần chạy bỏ dở, lịch chạy bỏ lượt khi bị khóa) |
 | Trang web | `web/DashboardControllerTests`, `security/LoginFlowApiTests` | `@WebMvcTest` với template và security thật (giờ Việt Nam, nút chỉ cho `ADMIN`, trang lỗi); server thật: đăng nhập rồi bấm nút với `_csrf` của form |
+| JMS và thống kê | `messaging/*Tests`, `repository/DailyStatsRepositoryTests`, `service/Stats*Tests` | Broker thật (Testcontainers): chỉ gửi sau commit, rollback thì không gửi, message lỗi 4 lần vào DLQ; truy vấn thống kê với ví dụ Q12 trên MySQL |
 | Quyền truy cập | `security/SecurityConfigTests`, `DemoLoginDisabledTests` | `@WebMvcTest` với cấu hình security thật: 401/403, CSRF, đường dẫn không khai báo, đăng nhập demo |
 | Server thật | `controller/ForwardedHeadersApiTests`, `ImportUploadLimitApiTests`, `security/LoginFlowApiTests` | `RANDOM_PORT` + `java.net.http` (`support/LoginSession` đăng nhập như trình duyệt): những gì Tomcat làm mà MockMvc bỏ qua (header proxy, giới hạn upload, cookie CSRF) |
 

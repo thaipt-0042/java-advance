@@ -14,6 +14,7 @@ import com.sunasterisk.socialanalytics.repository.PostRepository;
 import com.sunasterisk.socialanalytics.repository.SocialMetricRepository;
 import com.sunasterisk.socialanalytics.util.DbTime;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,10 +31,13 @@ public class SocialMetricService {
 
     private final SocialMetricRepository metricRepository;
     private final PostRepository postRepository;
+    private final StatsChanges statsChanges;
 
-    public SocialMetricService(SocialMetricRepository metricRepository, PostRepository postRepository) {
+    public SocialMetricService(SocialMetricRepository metricRepository, PostRepository postRepository,
+            StatsChanges statsChanges) {
         this.metricRepository = metricRepository;
         this.postRepository = postRepository;
+        this.statsChanges = statsChanges;
     }
 
     public PageResponse<MetricResponse> search(MetricFilter filter, PageQuery pageQuery) {
@@ -62,7 +66,9 @@ public class SocialMetricService {
         metric.setShares(request.shares());
         metric.setComments(request.comments());
         metric.setFollowers(request.followers());
-        return MetricResponse.from(metricRepository.save(metric));
+        MetricResponse created = MetricResponse.from(metricRepository.save(metric));
+        statsChanges.snapshotsChanged(capturedAt);
+        return created;
     }
 
     @Transactional
@@ -80,6 +86,8 @@ public class SocialMetricService {
         if (metricRepository.existsByPostIdAndCapturedAtAndIdNot(postId, capturedAt, id)) {
             throw duplicateSnapshot(postId, capturedAt);
         }
+        // Both days change when the snapshot moves: the one it left and the one it joins.
+        statsChanges.snapshotsChanged(metric.getCapturedAt(), capturedAt);
         metric.setCapturedAt(capturedAt);
         metric.setLikes(request.likes());
         metric.setShares(request.shares());
@@ -91,9 +99,11 @@ public class SocialMetricService {
 
     @Transactional
     public void delete(Long id) {
-        if (metricRepository.deleteByIdReturningCount(id) == 0) {
-            throw snapshotNotFound(id);
-        }
+        Instant capturedAt = metricRepository.findCapturedAtForUpdate(id)
+                .map(utc -> utc.toInstant(ZoneOffset.UTC))
+                .orElseThrow(() -> snapshotNotFound(id));
+        metricRepository.deleteByIdReturningCount(id);
+        statsChanges.snapshotsChanged(capturedAt);
     }
 
     private SocialMetric find(Long id) {
