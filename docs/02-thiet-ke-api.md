@@ -121,7 +121,7 @@ Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform`
 `GET /api/v1/export-report?from=2026-11-01&to=2026-11-30&platform=FACEBOOK` (mọi tham số tùy chọn; `from`/`to` là ngày `publishedAt` theo giờ Việt Nam, bao gồm cả hai đầu, tối đa 366 ngày).
 
 - 200, `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment; filename="social-report-2026-11-20.xlsx"` (ngày xuất theo giờ Việt Nam).
-- Nội dung theo đề xuất (Q11, chưa chốt): sheet "Posts" (mỗi bài kèm snapshot mới nhất, theo thứ tự tạo; cột như file import, thêm `capturedAt`; #7), sheet "Daily" (`date`, `platform`, `postsTracked`, `postsMeasured`, `likes`, `shares`, `comments`, `followers` của các ngày trong `from`..`to`; #12). #15 thêm cột chi phí quảng cáo quy ra VND và sheet tỷ giá (Q7).
+- Nội dung (đã chốt, Q11): sheet "Posts" (mỗi bài kèm snapshot mới nhất, theo thứ tự tạo; cột như file import, thêm `capturedAt`; #7), sheet "Daily" (`date`, `platform`, `postsTracked`, `postsMeasured`, `likes`, `shares`, `comments`, `followers` của các ngày trong `from`..`to`; #12). #15 thêm cột chi phí quảng cáo quy ra VND và sheet tỷ giá (Q7).
 - `from` sau `to`, khoảng quá dài, tham số sai kiểu (ngày không đúng dạng `yyyy-MM-dd`, nền tảng lạ) hoặc hơn 100.000 bài khớp bộ lọc: 422.
 
 ### Chạy job thủ công (#10, #11)
