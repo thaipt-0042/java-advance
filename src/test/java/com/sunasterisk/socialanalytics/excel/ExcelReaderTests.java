@@ -213,7 +213,8 @@ class ExcelReaderTests {
         assertThat(sheet.rows()).singleElement().extracting(row -> row.value().publishedAt()).isEqualTo(expected);
         // A negative serial number in a date cell is no date
         assertThat(read(Xlsx.withRawValue(dateFile(tenAm, (short) 22, false), "F2", "-1")).errors())
-                .containsExactly(new RowError(2, "publishedAt", "Ngày giờ không hợp lệ"));
+                .containsExactly(new RowError(2, "publishedAt",
+                        "Phải là ngày giờ (ô dạng Date, hoặc text như 2026-03-01 10:00)"));
     }
 
     @Test
@@ -235,13 +236,13 @@ class ExcelReaderTests {
     @Test
     void readsInlineStringsAndStyledEmptyCellsAndRejectsUnknownCellContent() {
         byte[] file = Xlsx.of(POST_HEADER, row("FACEBOOK", "a", "page"), row("FACEBOOK", "b", "page"));
-        // B2 as an inline string in two formatted runs, plus a phonetic run that isn't part of the text
+        // B2 as an inline string in two formatted runs
         file = Xlsx.editSheetXml(file, xml -> xml.replaceFirst("<c r=\"B2\"[^>]*>.*?</c>",
                 "<c r=\"B2\" t=\"inlineStr\"><is><r><t>id-</t></r><r><rPr><b/></rPr><t xml:space=\"preserve\">42 </t>"
-                        + "</r><rPh sb=\"0\" eb=\"1\"><t>ignored</t></rPh></is></c>"));
-        // B3 points at a shared string that doesn't exist; A3 has a cell type POI's writer never uses (ISO date)
-        file = Xlsx.withRawValue(file, "B3", "99999");
-        file = Xlsx.editSheetXml(file, xml -> xml.replaceFirst("<c r=\"A3\" t=\"s\"", "<c r=\"A3\" t=\"d\""));
+                        + "</r></is></c>"));
+        // A3 and B3 have a cell type no spreadsheet program writes
+        file = Xlsx.editSheetXml(file, xml -> xml.replaceFirst("<c r=\"A3\" t=\"s\"", "<c r=\"A3\" t=\"x\"")
+                .replaceFirst("<c r=\"B3\" t=\"s\"", "<c r=\"B3\" t=\"x\""));
         // Styled empty cells, as Excel writes for formatted columns: skipped in the header, null in a row
         file = Xlsx.editSheetXml(file, xml -> xml.replaceFirst("</row>", "<c r=\"K1\" s=\"0\"/></row>")
                 .replaceFirst("(<row r=\"2\"[^>]*>)", "$1<c r=\"D2\" s=\"0\"/>"));
@@ -258,15 +259,46 @@ class ExcelReaderTests {
     }
 
     @Test
+    void rejectsSheetsTheLibraryCannotParse() {
+        String notXlsx = "File không phải file Excel .xlsx đọc được";
+        byte[] file = Xlsx.of(POST_HEADER, row("FACEBOOK", "a", "page"));
+        // A cell reference without a column, a row number that isn't one, a shared string that doesn't exist
+        assertInvalid(Xlsx.editSheetXml(file, xml -> xml.replace("r=\"B2\"", "r=\"2B\"")), notXlsx);
+        assertInvalid(Xlsx.editSheetXml(file, xml -> xml.replace("<row r=\"2\"", "<row r=\"x\"")), notXlsx);
+        assertInvalid(Xlsx.withRawValue(file, "B2", "99999"), notXlsx);
+    }
+
+    @Test
+    void readsNumbersWithHugeExponentsAsDoubles() {
+        // The value of a number cell is a double: Excel never writes these, and they don't build huge numbers.
+        byte[] file = Xlsx.of(POST_HEADER,
+                row("FACEBOOK", 111, "page", null, null, null, 7, 2, 3, 100),
+                row("FACEBOOK", 222, "page", null, null, null, 7, 2, 3, 100));
+        file = Xlsx.withRawValue(Xlsx.withRawValue(file, "B2", "1e-999999999"), "G2", "1e-999999999");
+        file = Xlsx.withRawValue(Xlsx.withRawValue(file, "B3", "1e999999999"), "G3", "1e999999999");
+
+        ExcelSheet<PostImportRow> sheet = read(file);
+
+        assertThat(sheet.rows()).singleElement().satisfies(row -> {
+            assertThat(row.value().externalId()).isEqualTo("0");
+            assertThat(row.value().likes()).isZero();
+        });
+        // 1e999999999 is Infinity as a double
+        assertThat(sheet.errors()).containsExactly(
+                new RowError(3, "externalId", "Không đọc được giá trị của ô"),
+                new RowError(3, "likes", "Phải là số nguyên"));
+    }
+
+    @Test
     void stopsReadingAtTheRowAfterTheLimit() {
-        // Everything after the 4th data row is broken XML: with a limit of 3 it is never parsed.
-        byte[] file = Xlsx.editSheetXml(Xlsx.posts("max", 5),
-                xml -> xml.replaceFirst("<row r=\"6\".*</sheetData>", "<row r=\"6\"><c r=\"A6\"><v>1</broken>"));
+        // Row 50 on is broken XML: with a limit of 3 it is never parsed (the library reads 10 rows ahead).
+        byte[] file = Xlsx.editSheetXml(Xlsx.posts("max", 60),
+                xml -> xml.replaceFirst("<row r=\"50\".*</sheetData>", "<row r=\"50\"><c r=\"A50\"><v>1</broken>"));
 
         assertThatThrownBy(() -> reader.read(new ByteArrayInputStream(file), PostImportRow.class, 3))
                 .isInstanceOf(RowValidationException.class)
                 .hasMessage("File có hơn 3 dòng dữ liệu");
-        assertThatThrownBy(() -> reader.read(new ByteArrayInputStream(file), PostImportRow.class, 10))
+        assertThatThrownBy(() -> reader.read(new ByteArrayInputStream(file), PostImportRow.class, 100))
                 .isInstanceOf(InvalidFileException.class);
     }
 
@@ -368,7 +400,7 @@ class ExcelReaderTests {
     }
 
     @Test
-    void rejectsMoreRowsThanAllowedBeforeConvertingThem() {
+    void rejectsMoreRowsThanAllowedWithoutRowErrors() {
         assertThatThrownBy(() -> reader.read(new ByteArrayInputStream(Xlsx.posts("max", 4)), PostImportRow.class, 3))
                 .isInstanceOfSatisfying(RowValidationException.class, ex -> {
                     assertThat(ex.getMessage()).isEqualTo("File có hơn 3 dòng dữ liệu");
@@ -400,7 +432,8 @@ class ExcelReaderTests {
             throws IOException {
         try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             if (date1904) {
-                workbook.getCTWorkbook().addNewWorkbookPr().setDate1904(true);
+                // A new workbook already has a <workbookPr/>: a second one is not a valid file.
+                workbook.getCTWorkbook().getWorkbookPr().setDate1904(true);
             }
             Sheet sheet = workbook.createSheet("posts");
             Row header = sheet.createRow(0);
