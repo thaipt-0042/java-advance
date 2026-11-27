@@ -27,7 +27,7 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
  *       {@code ADMIN} ({@code docs/cau-hoi-lam-ro.md} Q1). 401 / 403 are JSON in the common error format, never a
  *       redirect.</li>
  *   <li><b>Web</b> (every other path): the login page, static files, health and Swagger are public; the dashboard
- *       needs a login; <b>any other path is denied</b>, so a path nobody declared is never open by accident.
+ *       needs a login, its "run the job now" button {@code ADMIN}; <b>any other path is denied</b>, so a path nobody declared is never open by accident.
  *       Not logged in: redirect to {@code /login} when the demo login is on; 403 while there is no login method.</li>
  * </ul>
  *
@@ -74,6 +74,7 @@ public class SecurityConfig {
     SecurityFilterChain webSecurityFilterChain(HttpSecurity http, DemoLoginProperties demoLogin) {
         http.authorizeHttpRequests(requests -> requests
                         .requestMatchers(PUBLIC_WEB_PATHS).permitAll()
+                        .requestMatchers(HttpMethod.POST, "/dashboard/update-metrics").hasRole("ADMIN")
                         .requestMatchers("/", "/dashboard").authenticated()
                         .anyRequest().denyAll())
                 .csrf(csrf -> csrf.spa())

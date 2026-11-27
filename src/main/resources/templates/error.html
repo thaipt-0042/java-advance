@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lỗi - Social Analytics</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<main>
+    <section class="card">
+        <h2>Đã có lỗi xảy ra</h2>
+        <p th:if="${status}" th:text="'Mã lỗi ' + ${status}">Mã lỗi 500</p>
+        <p>Hãy thử lại. Nếu lỗi lặp lại, báo cho quản trị viên.</p>
+        <p><a th:href="@{/dashboard}">Về dashboard</a></p>
+    </section>
+</main>
+</body>
+</html>

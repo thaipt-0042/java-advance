@@ -11,6 +11,7 @@ Mini project của khóa **Java Spring Boot – Advance**: ứng dụng web giú
 | Database | MySQL 8.4 (JPA / Hibernate), migration bằng Flyway |
 | API Docs | springdoc-openapi (Swagger UI) |
 | Security | Spring Security 7 (form login demo ở `dev`, CSRF) |
+| Giao diện | Thymeleaf (`templates/`), CSS trong `static/css` |
 | Excel | Apache POI (`poi-ooxml`) |
 | Background job | `@Scheduled` + `@Async` (`ThreadPoolTaskExecutor`), ShedLock trên MySQL |
 | Logging | SLF4J + Logback (`logback-spring.xml`) |
@@ -23,7 +24,12 @@ src/main/java/com/sunasterisk/socialanalytics
 ├── SocialAnalyticsApplication.java
 ├── config/        # cấu hình (OpenAPI, Clock, JPA auditing)
 ├── controller/    # REST controllers
+├── web/           # trang Thymeleaf (dashboard)
+├── security/      # Spring Security: filter chain, CSRF, đăng nhập demo
 ├── service/       # business logic
+│   └── metrics/   # job cập nhật số liệu (chạy song song từng tài khoản)
+├── job/           # lịch chạy (@Scheduled), chỉ gọi vào service
+├── client/        # API Facebook / X (bản giả lập)
 ├── repository/    # Spring Data JPA repositories
 ├── dto/           # request/response DTO
 ├── entity/        # JPA entities
@@ -58,6 +64,7 @@ docker compose up -d
 ```
 
 - Đăng nhập (chỉ profile `dev`): http://localhost:8080/login, tài khoản `demo-admin` hoặc `demo-user` (xem "Đăng nhập và quyền")
+- Dashboard: http://localhost:8080/dashboard (thời điểm cập nhật số liệu cuối, lần chạy job gần nhất; `ADMIN` có nút "Chạy job ngay")
 - Health: http://localhost:8080/actuator/health
 - Swagger UI (chỉ profile `dev`): http://localhost:8080/swagger-ui.html
 - OpenAPI JSON (chỉ profile `dev`): http://localhost:8080/v3/api-docs
@@ -158,6 +165,8 @@ Job `updateSocialMetricsJob` chạy mỗi giờ (`METRICS_JOB_CRON`, mặc đị
 - `POST /api/v1/jobs/update-metrics` (`ADMIN`, CSRF): chạy ngay, chạy nền, trả 202 `{runId}`. Job đang chạy (ở bất kỳ instance nào) thì 409.
 - `GET /api/v1/jobs/update-metrics/latest`: lần chạy gần nhất (`status`, `triggerType`, `startedAt`, `finishedAt`, số tài khoản, số tài khoản lỗi, số snapshot, `errorMessage`) và `lastUpdatedAt` (lần `SUCCEEDED` / `PARTIAL` gần nhất). Chưa chạy lần nào thì các trường là `null`.
 
+**Dashboard** (`/dashboard`, cần đăng nhập): "Cập nhật lần cuối" (lần `SUCCEEDED` / `PARTIAL` gần nhất) và trạng thái lần chạy gần nhất, theo giờ `APP_TIME_ZONE`. `ADMIN` có nút "Chạy job ngay": form gửi thường kèm trường ẩn `_csrf`, chạy xong request thì quay lại dashboard với thông báo "đã bắt đầu" hoặc "job đang chạy".
+
 Cấu hình sai (cron, kích thước pool, `lock-at-most-for` không dài hơn `account-timeout` ít nhất 1 phút, tỷ lệ lỗi ngoài 0..1) thì app không khởi động.
 
 ## Test
@@ -175,6 +184,7 @@ Cấu hình sai (cron, kích thước pool, `lock-at-most-for` không dài hơn 
 | Test API đầy đủ | `controller/*ApiTests` | `@SpringBootTest` + MockMvc trên MySQL thật, không rollback (mỗi request commit như production); gồm cả test hai request chen nhau. Cũng chạy với `support/AdminRequests` |
 | Đọc / ghi Excel | `excel/ExcelReaderTests`, `ExcelWriterTests` | Unit test, file `.xlsx` tạo và đọc lại trong bộ nhớ (`support/Xlsx`, không commit file nhị phân) |
 | Job | `service/metrics/*Tests`, `client/MockSocialMetricsClientTests`, `controller/JobApiTests` | Service với Mockito (tài khoản lỗi, quá thời gian, hàng đợi đầy, khóa đang bị giữ); updater và API trên MySQL thật (bài bị xóa giữa chừng, lần chạy bỏ dở, lịch chạy bỏ lượt khi bị khóa) |
+| Trang web | `web/DashboardControllerTests`, `security/LoginFlowApiTests` | `@WebMvcTest` với template và security thật (giờ Việt Nam, nút chỉ cho `ADMIN`, trang lỗi); server thật: đăng nhập rồi bấm nút với `_csrf` của form |
 | Quyền truy cập | `security/SecurityConfigTests`, `DemoLoginDisabledTests` | `@WebMvcTest` với cấu hình security thật: 401/403, CSRF, đường dẫn không khai báo, đăng nhập demo |
 | Server thật | `controller/ForwardedHeadersApiTests`, `ImportUploadLimitApiTests`, `security/LoginFlowApiTests` | `RANDOM_PORT` + `java.net.http` (`support/LoginSession` đăng nhập như trình duyệt): những gì Tomcat làm mà MockMvc bỏ qua (header proxy, giới hạn upload, cookie CSRF) |
 

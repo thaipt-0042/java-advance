@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Social Analytics</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<header class="topbar">
+    <span class="brand">Social Analytics</span>
+    <span class="user">
+        <span th:text="${username}">demo-admin</span>
+        <span class="role" th:text="${admin} ? 'ADMIN' : 'USER'">ADMIN</span>
+        <!-- Plain form post: Thymeleaf adds the _csrf hidden field -->
+        <form th:action="@{/logout}" method="post" class="inline">
+            <button type="submit" class="link">Đăng xuất</button>
+        </form>
+    </span>
+</header>
+
+<main>
+    <p class="flash ok" th:if="${message}" th:text="${message}">Đã bắt đầu</p>
+    <p class="flash error" th:if="${error}" th:text="${error}">Job đang chạy</p>
+
+    <section class="card">
+        <h2>Cập nhật số liệu</h2>
+        <dl>
+            <dt>Cập nhật lần cuối</dt>
+            <dd id="last-updated">
+                <strong th:if="${view.lastUpdated}" th:text="${view.lastUpdated}">20/11/2026 10:00:05</strong>
+                <span th:unless="${view.lastUpdated}">Chưa có lần cập nhật nào</span>
+                <span class="muted" th:text="'(giờ ' + ${view.timeZone} + ')'">(giờ Asia/Ho_Chi_Minh)</span>
+            </dd>
+
+            <dt>Lần chạy gần nhất</dt>
+            <dd id="latest-run" th:if="${view.runId}">
+                <span th:text="'#' + ${view.runId}">#12</span>
+                <span class="status" th:classappend="${view.runFailed} ? 'bad' : (${view.running} ? 'busy' : 'good')"
+                      th:text="${view.runStatus}">Thành công</span>
+                <span th:text="${view.runTrigger}">theo lịch</span>,
+                bắt đầu <span th:text="${view.runStartedAt}">20/11/2026 10:00:00</span>
+                <th:block th:if="${view.runFinishedAt}">
+                    , xong <span th:text="${view.runFinishedAt}">20/11/2026 10:00:05</span>
+                </th:block>
+                <div class="muted" th:if="${view.runAccounts}" th:text="${view.runAccounts}">3 tài khoản, 0 lỗi</div>
+                <div class="muted error-text" th:if="${view.runError}" th:text="${view.runError}">lỗi</div>
+            </dd>
+            <dd id="latest-run" th:unless="${view.runId}">Job chưa chạy lần nào</dd>
+        </dl>
+
+        <!-- ADMIN only; the server checks the role too (SecurityConfig) -->
+        <form th:if="${admin}" th:action="@{/dashboard/update-metrics}" method="post" id="run-job">
+            <button type="submit">Chạy job ngay</button>
+        </form>
+    </section>
+</main>
+</body>
+</html>
