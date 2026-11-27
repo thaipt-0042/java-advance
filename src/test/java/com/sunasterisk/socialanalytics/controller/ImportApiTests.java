@@ -118,7 +118,7 @@ class ImportApiTests extends ApiTestBase {
         importFile("big.xlsx", Xlsx.posts("big-" + token(), 5_001))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("VALIDATION"))
-                .andExpect(jsonPath("$.detail").value("File có 5001 dòng dữ liệu, tối đa 5000 dòng"))
+                .andExpect(jsonPath("$.detail").value("File có hơn 5000 dòng dữ liệu"))
                 .andExpect(jsonPath("$.errors.length()").value(0));
     }
 
