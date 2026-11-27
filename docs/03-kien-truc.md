@@ -11,7 +11,7 @@ com.sunasterisk.socialanalytics
 ├── SocialAnalyticsApplication                          (đã có)
 ├── config       ClockConfig, JpaAuditingConfig, OpenApiConfig            (đã có)
 │                AsyncConfig (#10: @EnableAsync, 2 executor), JmsConfig (#12), WebSocketConfig (#13), WebServiceConfig (#15)
-├── security     SecurityConfig, DemoLoginProperties, HeaderCsrfTokenRequestHandler, CsrfCookieFilter   (#8)
+├── security     SecurityConfig, DemoLoginProperties, HeaderCsrfTokenRequestHandler   (#8)
 │                SocialOAuth2UserService, AdminAccountsProperties                          (#9)
 ├── controller   PostController, SocialMetricController                   (đã có)
 │                ImportController (#6), ReportController (#7), JobController (#11), ChartDataController (#13)
@@ -76,7 +76,7 @@ src/main/resources
   - **JS gọi API** (`fetch` từ dashboard, Swagger UI): đọc cookie `XSRF-TOKEN` (`CookieCsrfTokenRepository`, không `HttpOnly`) và gửi lại trong header `X-XSRF-TOKEN`. Cookie chứa token chưa mask. Đã làm ở #8:
     - Chain API dùng `HeaderCsrfTokenRequestHandler`: chỉ đọc token thô từ header, không đọc tham số `_csrf` (xem "Upload multipart và CSRF").
     - Chain web dùng `csrf.spa()` của Spring Security 7.1: header dạng thô, hoặc trường `_csrf` dạng mask của form.
-    - Token mặc định chỉ được tạo khi có ai đọc nó, nên `CsrfCookieFilter` nạp token ở mọi request để cookie luôn có, kể cả ngay sau khi đăng nhập.
+    - Token mặc định chỉ được tạo khi có ai đọc nó. Cả hai handler đặt tên attribute CSRF là `null` (`csrf.spa()` tự làm; `HeaderCsrfTokenRequestHandler` gọi `setCsrfRequestAttributeName(null)`), nên token được nạp ở mọi request và cookie luôn có, kể cả ngay sau khi đăng nhập (sửa theo review #28, thay cho một filter riêng).
     - Swagger UI tự gửi header nhờ `springdoc.swagger-ui.csrf.enabled=true` (profile `dev`).
   - **STOMP `CONNECT`**: token lấy từ thẻ meta do Thymeleaf render (giá trị đã mask), gửi trong header của frame `CONNECT`. Interceptor CSRF cho WebSocket của Spring Security 7 cần dạng nào: **kiểm tra khi làm #13**.
 - **Upload multipart và CSRF**: form import gửi bằng `fetch` kèm header CSRF như mọi lời gọi API. API không đọc `_csrf` trong body multipart: tìm tham số đó buộc Tomcat parse body ngay trong `CsrfFilter`, và body vượt giới hạn upload ném `InvalidParameterException` ở đó, trước mọi handler lỗi (đã đo: log `ERROR` hai lần kèm stack trace cho mỗi request như vậy, ai cũng gửi được). Chỉ đọc header thì thiếu token là 403 sạch, đủ token mà file quá lớn là 413.
@@ -136,7 +136,7 @@ sequenceDiagram
   - `METRICS_UPDATED` sau mỗi lần chạy job, `runId` (đã chốt, Q5);
   - `METRICS_CHANGED` sau khi sửa/xóa bài hoặc snapshot qua API (đã chốt, Q5).
 - **Chỉ gửi sau khi commit**: service phát Spring event trong transaction; `@TransactionalEventListener(phase = AFTER_COMMIT)` mới gửi JMS. Rollback thì không gửi. Đánh đổi: app chết đúng lúc giữa commit và gửi thì mất message; lần chạy job kế tiếp tính lại ngày hôm nay nên message của import/job tự khớp lại; message của một lần sửa dữ liệu cũ qua API bị mất thì các ngày cũ lệch cho tới lần sửa kế tiếp ở khoảng đó. Transactional outbox nằm ngoài phạm vi.
-- **Listener**: tính lại `daily_platform_stats` từ `fromDate` tới hôm nay (xóa + `INSERT … SELECT` trong một transaction READ COMMITTED, xem `01-thiet-ke-csdl.md`), điền `import_batches.stats_refreshed_at` nếu có `batchId`, rồi gửi WebSocket `STATS_UPDATED` (#13). Chạy một luồng.
+- **Listener**: tính lại `daily_platform_stats` từ `fromDate` tới hôm nay (xóa + `INSERT … SELECT` trong một transaction READ COMMITTED, xem `01-thiet-ke-csdl.md`), điền `import_batches.stats_refreshed_at` nếu có `batchId`, rồi gửi WebSocket `STATS_UPDATED` (#13). Một lần tính lại tại một thời điểm trên mọi instance: queue `exclusive` (broker chỉ giao message cho một consumer, consumer khác chỉ nhận thay khi consumer đó ngắt kết nối), và mỗi instance chỉ có một luồng listener. Không có `exclusive` thì hai instance tính lại cùng một ngày song song sẽ deadlock hoặc trùng khóa chính của `daily_platform_stats` (đã gặp khi test có nhiều consumer).
 - **Gửi lỗi**: broker không kết nối được lúc gửi (sau commit) thì log `ERROR`, không ném lỗi cho request đã commit. Message chỉ có id và ngày; kiểu Java đi theo alias `_type` = `stats-refresh` (`JmsConfig`), không theo tên class. Tính lại từ dữ liệu gốc nên nhận trùng message vẫn đúng (**issue #12** yêu cầu idempotent).
 - **Retry và DLQ** (**đề yêu cầu**): session có transaction; listener ném exception thì broker giao lại, tối đa vài lần có độ trễ, sau đó chuyển sang dead letter queue. Cấu hình ở broker (`docker/artemis/broker.properties`, chép đè lên cấu hình của image, Docker Compose và test dùng chung): giao lại sau 1, 2, 4 giây, lỗi lần thứ 4 thì chuyển sang `analytics.stats-refresh.dlq`; hai queue được khai báo sẵn để giữ message cả khi chưa app nào kết nối. Một listener trên DLQ log `ERROR` kèm nội dung message để biết message nào bị bỏ.
 - Message chỉ chứa id và ngày, không chứa dữ liệu bài viết hay token.
@@ -158,8 +158,8 @@ sequenceDiagram
 
 - `@ExcelColumn(name = "platform", required = true)` đặt trên field của class dòng import/export; `ExcelReader`/`ExcelWriter` đọc annotation bằng Reflection, map ô ↔ field theo tên cột, đổi kiểu (chuỗi, số, ngày, enum). Không viết tay từng cột (**issue #6**).
 - Metadata (field, setter/getter, kiểu) đọc một lần mỗi class rồi cache (**issue #16**).
-- Import đọc cả file, kiểm tra từng dòng (Bean Validation trên class dòng), gom lỗi theo số dòng Excel trước khi ghi DB.
-- Export dùng `SXSSFWorkbook` (giữ một số dòng trong bộ nhớ, phần còn lại ghi ra file tạm) (**issue #7**).
+- Import đọc file theo dạng streaming (`excel-streaming-reader`, không nạp cả workbook vào bộ nhớ), kiểm tra từng dòng (Bean Validation trên class dòng), gom lỗi theo số dòng Excel trước khi ghi DB.
+- Export dùng `SXSSFWorkbook` (giữ một số dòng trong bộ nhớ, phần còn lại ghi ra file tạm) (**issue #7**). Text bắt đầu như một công thức (`=`, `+`, `-`, `@`, Tab, CR, LF) được ghi với kiểu ô "quote prefix", nên vẫn là text sau khi người dùng sửa ô trong Excel (sửa theo review #27).
 - #16 gom phần dùng chung thành một importer/exporter cho mọi class có `@ExcelColumn`.
 
 ## 9. Triển khai và cấu hình
