@@ -1,12 +1,20 @@
 package com.sunasterisk.socialanalytics.support;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.UnaryOperator;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
@@ -54,6 +62,43 @@ public final class Xlsx {
                     "content " + i, "2026-03-01T03:00:00Z", i, 2, 3, 100));
         }
         return of(rows.toArray(List<?>[]::new));
+    }
+
+    /**
+     * Replaces the value of one cell directly in the sheet XML, to build files other tools may write but POI's
+     * usermodel can't, e.g. a numeric cell holding text ({@code <c r="B2"><v>abc</v></c>}).
+     */
+    public static byte[] withRawValue(byte[] xlsx, String cellRef, String rawValue) {
+        return editSheetXml(xlsx, xml -> {
+            Matcher cell = Pattern.compile("(<c r=\"" + cellRef + "\"[^>]*>)<v>[^<]*</v>").matcher(xml);
+            if (!cell.find()) {
+                throw new IllegalArgumentException("No value cell " + cellRef + " in " + xml);
+            }
+            return xml.substring(0, cell.start()) + cell.group(1) + "<v>" + rawValue + "</v>"
+                    + xml.substring(cell.end());
+        });
+    }
+
+    /** Rewrites {@code xl/worksheets/sheet1.xml}; every other entry is copied as is. */
+    public static byte[] editSheetXml(byte[] xlsx, UnaryOperator<String> edit) {
+        try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(xlsx));
+             ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
+            try (ZipOutputStream out = new ZipOutputStream(bytes)) {
+                for (ZipEntry entry = in.getNextEntry(); entry != null; entry = in.getNextEntry()) {
+                    byte[] content = in.readAllBytes();
+                    if (entry.getName().equals("xl/worksheets/sheet1.xml")) {
+                        content = edit.apply(new String(content, StandardCharsets.UTF_8))
+                                .getBytes(StandardCharsets.UTF_8);
+                    }
+                    out.putNextEntry(new ZipEntry(entry.getName()));
+                    out.write(content);
+                    out.closeEntry();
+                }
+            }
+            return bytes.toByteArray();
+        } catch (IOException ex) {
+            throw new UncheckedIOException(ex);
+        }
     }
 
     private static byte[] write(Workbook workbook, List<? extends List<?>> rows) {

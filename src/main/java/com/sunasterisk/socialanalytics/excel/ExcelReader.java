@@ -222,16 +222,22 @@ public class ExcelReader {
         if (cellType == CellType.ERROR) {
             throw new CellException("Ô bị lỗi công thức");
         }
-        if (type == String.class) {
-            return toText(cell, cellType);
+        try {
+            if (type == String.class) {
+                return toText(cell, cellType);
+            }
+            if (type == Long.class) {
+                return toLong(cell, cellType);
+            }
+            if (type == Instant.class) {
+                return toInstant(cell, cellType);
+            }
+            return toEnum(cell, cellType, type);
+        } catch (IllegalStateException | NumberFormatException ex) {
+            // A malformed cell, e.g. a numeric cell holding text (<c r="B2"><v>abc</v></c>) written by another
+            // tool: POI throws when its value is read.
+            throw new CellException("Không đọc được giá trị của ô");
         }
-        if (type == Long.class) {
-            return toLong(cell, cellType);
-        }
-        if (type == Instant.class) {
-            return toInstant(cell, cellType);
-        }
-        return toEnum(cell, cellType, type);
     }
 
     private static @Nullable String toText(Cell cell, CellType cellType) {

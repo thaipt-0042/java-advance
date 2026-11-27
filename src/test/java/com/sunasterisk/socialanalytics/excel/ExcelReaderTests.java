@@ -173,6 +173,25 @@ class ExcelReaderTests {
     }
 
     @Test
+    void numericCellsHoldingTextGiveRowErrors() {
+        // Written by another tool or edited by hand: <c r="B2"><v>abc</v></c> is a numeric cell whose value is text.
+        byte[] file = Xlsx.of(POST_HEADER,
+                row("FACEBOOK", 111, "page", null, null, LocalDateTime.of(2026, 3, 1, 10, 0), 7, 2, 3, 100),
+                row("FACEBOOK", "ok", "page"));
+        for (String cell : new String[] {"B2", "F2", "G2"}) {
+            file = Xlsx.withRawValue(file, cell, "abc");
+        }
+
+        ExcelSheet<PostImportRow> sheet = read(file);
+
+        assertThat(sheet.errors()).containsExactly(
+                new RowError(2, "externalId", "Không đọc được giá trị của ô"),
+                new RowError(2, "publishedAt", "Không đọc được giá trị của ô"),
+                new RowError(2, "likes", "Không đọc được giá trị của ô"));
+        assertThat(sheet.rows()).extracting(row -> row.value().externalId()).containsExactly("ok");
+    }
+
+    @Test
     void reportsBeanValidationErrorsByColumnAndRowRulesWithoutColumn() {
         ExcelSheet<PostImportRow> sheet = read(Xlsx.of(POST_HEADER,
                 row("FACEBOOK", "a", "  ", "ftp://example.com", "x".repeat(5001)),
