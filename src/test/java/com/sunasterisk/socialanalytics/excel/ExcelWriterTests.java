@@ -85,6 +85,28 @@ class ExcelWriterTests {
         }
     }
 
+    @Test
+    void quotePrefixesTextThatExcelWouldTakeAsAFormulaOnceEdited() throws IOException {
+        // Without the prefix, editing the cell and pressing Enter turns these into formulas.
+        String[] formulaLike = {"=1+1", "+1", "-1", "@abc", "\tx", "\rx", "\nx"};
+        String[] plain = {"abc", "a=b", " =1", ""};
+        byte[] file = write(Stream.concat(Stream.of(formulaLike), Stream.of(plain))
+                .map(text -> new Sample(text, null, null, null, null, null))
+                .toArray(Sample[]::new));
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(file))) {
+            Sheet sheet = workbook.getSheet("Samples");
+            for (int i = 0; i < formulaLike.length + plain.length; i++) {
+                Cell cell = sheet.getRow(i + 1).getCell(0);
+                boolean quoted = i < formulaLike.length;
+                String text = quoted ? formulaLike[i] : plain[i - formulaLike.length];
+                assertThat(cell.getCellType()).isEqualTo(CellType.STRING);
+                assertThat(cell.getStringCellValue()).isEqualTo(text);
+                assertThat(cell.getCellStyle().getQuotePrefixed()).as(cell.getStringCellValue()).isEqualTo(quoted);
+            }
+        }
+    }
+
     record Imported(
             @ExcelColumn(name = "name", required = true) String name,
             @ExcelColumn(name = "at") Instant at) {

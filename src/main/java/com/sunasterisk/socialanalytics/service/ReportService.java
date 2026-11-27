@@ -64,7 +64,7 @@ public class ReportService {
             do {
                 page = reportRepository.findPage(filter.platform(), publishedFrom, publishedBefore, afterId,
                         PAGE_SIZE);
-                page.forEach(entry -> posts.append(entry.row()));
+                page.forEach(entry -> posts.append(toRow(entry)));
                 if (!page.isEmpty()) {
                     afterId = page.getLast().postId();
                 }
@@ -75,6 +75,12 @@ public class ReportService {
             closeQuietly(file, ex);
             throw ex;
         }
+    }
+
+    private static PostReportRow toRow(ReportEntry entry) {
+        return new PostReportRow(entry.platform(), entry.externalId(), entry.accountName(), entry.url(),
+                entry.content(), entry.publishedAt(), entry.likes(), entry.shares(), entry.comments(),
+                entry.followers(), entry.capturedAt());
     }
 
     private @Nullable Instant startOf(@Nullable LocalDate day) {

@@ -1,6 +1,6 @@
 # Câu hỏi cần làm rõ
 
-Các điểm đề bài chưa nói rõ. Mỗi câu ghi các phương án và **đề xuất**. **Q1, Q2, Q3, Q4, Q5, Q12 đã chốt**; các câu còn lại đang **chưa có câu trả lời**. Tài liệu thiết kế khác (`00`–`03`) đang viết theo đề xuất, chỗ nào phụ thuộc câu trả lời thì ghi số câu (Q…). Có câu trả lời thì cập nhật file này và các tài liệu liên quan.
+Các điểm đề bài chưa nói rõ. Mỗi câu ghi các phương án và **đề xuất**. **Q1–Q10, Q12 đã chốt**; Q11 **chưa có câu trả lời**, #7 đang làm theo đề xuất. Tài liệu thiết kế khác (`00`–`03`) đang viết theo đề xuất, chỗ nào phụ thuộc câu trả lời thì ghi số câu (Q…). Có câu trả lời thì cập nhật file này và các tài liệu liên quan.
 
 Đề bài được nhắc theo tên giai đoạn ("Khởi tạo project", "Unit Test + Import/Export Excel", "Bảo mật & CSRF + Social Login", "Background Job & MultiThread", "JMS & Queue Handling", "WebSocket + Chart Visualization", "Spring WebService + Reflection nâng cao + Tổng kết").
 
@@ -64,6 +64,8 @@ Ví dụ: 9:00 import file, bảng được tính lại. 10:00 job lấy đượ
 - "Mock API từ FB/TW": **đề xuất** một interface client, bản mock trả số liệu tăng dần ngẫu nhiên, có thể cấu hình độ trễ và tỷ lệ lỗi để thử xử lý lỗi. Không gọi API thật, nên token đã lưu (#9) chưa được dùng để gọi API ở phạm vi đề.
 - Bấm "chạy ngay" khi job đang chạy: **đề xuất** trả 409 "job đang chạy", không xếp hàng.
 
+**Đã chốt: theo đề xuất** cả ba ý.
+
 ## Q7. Dùng kết quả gọi SOAP vào đâu?
 
 Đề ghi "Gọi 1 WebService mock (ví dụ: exchange rate API SOAP)" nhưng không nói dùng kết quả để làm gì; dữ liệu của app không có tiền tệ.
@@ -74,6 +76,12 @@ Ví dụ: 9:00 import file, bảng được tính lại. 10:00 job lấy đượ
 
 **Đề xuất: (a).** SOAP endpoint giả lập nằm ngay trong app (`/soap/*`), client đọc URL từ cấu hình nên trỏ sang dịch vụ khác được.
 
+**Đã chốt: (b) + (c)**, làm ở #15:
+- Bài viết có thêm chi phí quảng cáo `ad_cost` (USD, tùy chọn), nhập qua API `/posts` và cột `adCost` của file import.
+- Dashboard hiện tỷ giá USD → VND và tổng chi phí quảng cáo quy ra VND.
+- File export thêm cột chi phí quy ra VND và một sheet tỷ giá đã dùng (ngày, cặp tiền, tỷ giá).
+- Không lấy được tỷ giá (SOAP fault, timeout) thì dashboard và file export vẫn có, phần quy đổi ghi "không lấy được tỷ giá".
+
 ## Q8. Token truy cập có cần mã hóa khi lưu không?
 
 Đề yêu cầu "Lưu token truy cập". Spring Security mặc định lưu token dạng rõ trong DB.
@@ -83,17 +91,23 @@ Ví dụ: 9:00 import file, bảng được tính lại. 10:00 job lấy đượ
 
 **Đề xuất: (a)** trong phạm vi bài tập (token không được dùng để gọi API thật, xem Q6), ghi rõ rủi ro trong README.
 
+**Đã chốt: (b)**, làm ở #9. Mã hóa AES-GCM, khóa đọc từ biến môi trường `APP_TOKEN_ENCRYPTION_KEY` (thiếu hoặc sai độ dài thì app không khởi động). Mã hóa ở lớp đọc/ghi của `JdbcOAuth2AuthorizedClientService` (row mapper và parameters mapper), bảng vẫn theo schema chuẩn. Đổi khóa thì token cũ không đọc được: người dùng chỉ cần đăng nhập lại.
+
 ## Q9. Giao diện: Thymeleaf hay ReactJS?
 
 Đề ghi "Frontend (optional): Thymeleaf or ReactJS minimal UI", nhưng các giai đoạn lại cần trang thật: login → "redirect về dashboard", "CSRF token và form submission", màn hình "Last updated time", Chart.js.
 
 **Đề xuất: Thymeleaf**, render từ cùng app (cùng session đăng nhập, CSRF token có sẵn trong form), JS thuần cho Chart.js và WebSocket.
 
+**Đã chốt: Thymeleaf** (theo đề xuất).
+
 ## Q10. Broker JMS: ActiveMQ hay RabbitMQ?
 
 Đề cho chọn một. RabbitMQ dùng giao thức AMQP; muốn dùng qua JMS phải thêm thư viện client JMS riêng. ActiveMQ Artemis hỗ trợ JMS trực tiếp và có starter của Spring Boot.
 
 **Đề xuất: ActiveMQ Artemis**, chạy bằng Docker Compose; test dùng Testcontainers.
+
+**Đã chốt: ActiveMQ** (bản Artemis, `spring-boot-starter-artemis`, theo đề xuất).
 
 ## Q11. File export gồm những gì?
 
@@ -102,6 +116,8 @@ Ví dụ: 9:00 import file, bảng được tính lại. 10:00 job lấy đượ
 **Đề xuất**:
 - `/export-report` (#7): một sheet các bài viết (lọc theo nền tảng, khoảng ngày `publishedAt` theo giờ Việt Nam), mỗi bài kèm snapshot mới nhất; một sheet thống kê theo ngày từ `daily_platform_stats`.
 - #16 làm lại phần đọc/ghi Excel thành generic: một exporter/importer cho mọi class có annotation `@ExcelColumn`, dùng chung cho import (#6) và export (#7).
+
+**Chưa chốt.** #7 làm theo đề xuất: sheet "Posts" ở #7, sheet "Daily" thêm ở #12 (khi có bảng `daily_platform_stats`). Q7 (đã chốt) thêm cột chi phí quy ra VND và sheet tỷ giá ở #15.
 
 ## Q12. Bài không có snapshot trong ngày thì tính số nào?
 
