@@ -74,6 +74,15 @@ public final class LoginSession implements AutoCloseable {
         return client.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
+    /** Value of a cookie of this session, or null. */
+    public String cookie(String name) {
+        return cookies.getCookieStore().getCookies().stream()
+                .filter(cookie -> cookie.getName().equals(name))
+                .map(HttpCookie::getValue)
+                .findFirst()
+                .orElse(null);
+    }
+
     public String csrfToken() {
         return cookies.getCookieStore().getCookies().stream()
                 .filter(cookie -> cookie.getName().equals("XSRF-TOKEN"))

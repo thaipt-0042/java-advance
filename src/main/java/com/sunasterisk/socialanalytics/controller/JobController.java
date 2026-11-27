@@ -6,7 +6,9 @@ import com.sunasterisk.socialanalytics.service.metrics.MetricUpdateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import com.sunasterisk.socialanalytics.security.CurrentUser;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,8 +32,8 @@ public class JobController {
             description = "Bắt đầu chạy nền rồi trả về ngay; theo dõi bằng `GET .../latest`.")
     @ApiResponse(responseCode = "202", description = "Đã bắt đầu")
     @ApiResponse(responseCode = "409", description = "Job đang chạy (ở instance này hoặc instance khác)")
-    public RunStartedResponse start() {
-        return new RunStartedResponse(metricUpdateService.startManual());
+    public RunStartedResponse start(Authentication authentication) {
+        return new RunStartedResponse(metricUpdateService.startManual(CurrentUser.userId(authentication)));
     }
 
     @GetMapping("/latest")

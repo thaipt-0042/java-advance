@@ -5,12 +5,18 @@ import static com.sunasterisk.socialanalytics.support.Xlsx.row;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oauth2Login;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import com.sunasterisk.socialanalytics.entity.SocialPlatform;
+import com.sunasterisk.socialanalytics.entity.User;
+import com.sunasterisk.socialanalytics.entity.UserRole;
+import com.sunasterisk.socialanalytics.repository.UserRepository;
+import com.sunasterisk.socialanalytics.security.SocialUser;
 import com.sunasterisk.socialanalytics.support.StatsQueue;
 import com.sunasterisk.socialanalytics.support.Xlsx;
 import java.time.Duration;
@@ -32,6 +38,30 @@ class ImportApiTests extends ApiTestBase {
      * The whole chain after commit: IMPORT_COMPLETED on the broker, the listener recomputes today's statistics and
      * marks the batch.
      */
+    @Test
+    void theUploaderOfAFacebookOrXLoginIsStored() throws Exception {
+        String t = token();
+        User saved = userRepository.save(adminUser(t));
+        SocialUser admin = new SocialUser(saved);
+
+        String body = mockMvc.perform(multipart("/api/v1/import-posts")
+                        .file(new MockMultipartFile("file", t + ".xlsx", XLSX,
+                                Xlsx.of(POST_HEADER, row("TWITTER", t + "-1", "page-" + t))))
+                        .with(oauth2Login().oauth2User(admin)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        long batchId = ((Number) JsonPath.read(body, "$.batchId")).longValue();
+        assertThat(jdbcTemplate.queryForObject("select uploaded_by from import_batches where id = ?", Long.class,
+                batchId)).isEqualTo(saved.getId());
+    }
+
+    private static User adminUser(String token) {
+        User user = new User(SocialPlatform.FACEBOOK, "fb-" + token, "Admin " + token);
+        user.setRole(UserRole.ADMIN);
+        return user;
+    }
+
     @Test
     void anImportRefreshesTheStatisticsThroughTheQueue() throws Exception {
         StatsQueue.awaitDrained(jmsTemplate);
@@ -62,6 +92,9 @@ class ImportApiTests extends ApiTestBase {
 
     @Autowired
     private JmsTemplate jmsTemplate;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @Test
     void importsPostsWithSnapshotsThenReimportUpdatesThem() throws Exception {

@@ -1,6 +1,7 @@
 package com.sunasterisk.socialanalytics.web;
 
 import com.sunasterisk.socialanalytics.exception.ConflictException;
+import com.sunasterisk.socialanalytics.security.CurrentUser;
 import com.sunasterisk.socialanalytics.service.metrics.MetricUpdateService;
 import java.time.Clock;
 import org.springframework.security.core.Authentication;
@@ -38,7 +39,7 @@ public class DashboardController {
     @GetMapping("/dashboard")
     public String dashboard(Authentication authentication, Model model) {
         model.addAttribute("view", DashboardView.of(metricUpdateService.latest(), clock.getZone()));
-        model.addAttribute("username", authentication.getName());
+        model.addAttribute("username", CurrentUser.displayName(authentication));
         model.addAttribute("admin", authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch("ROLE_ADMIN"::equals));
@@ -47,9 +48,9 @@ public class DashboardController {
 
     /** {@code ADMIN} only ({@code SecurityConfig}); 409 of the API becomes a message here. */
     @PostMapping("/dashboard/update-metrics")
-    public String updateMetrics(RedirectAttributes redirect) {
+    public String updateMetrics(Authentication authentication, RedirectAttributes redirect) {
         try {
-            long runId = metricUpdateService.startManual();
+            long runId = metricUpdateService.startManual(CurrentUser.userId(authentication));
             redirect.addFlashAttribute("message", STARTED.formatted(runId));
         } catch (ConflictException ex) {
             redirect.addFlashAttribute("error", ALREADY_RUNNING);

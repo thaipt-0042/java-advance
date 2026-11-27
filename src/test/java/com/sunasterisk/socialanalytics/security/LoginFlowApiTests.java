@@ -10,18 +10,22 @@ import java.net.URLEncoder;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
  * The whole browser flow on a real server: form login, the {@code XSRF-TOKEN} cookie a JavaScript client reads,
- * a write with the token in the header, the dashboard form with the {@code _csrf} field, logout. (MockMvc doesn't show the cookie written by the CSRF filter.)
+ * a write with the token in the header, the dashboard form with the {@code _csrf} field, logout. (MockMvc doesn't
+ * show the cookie written by the CSRF filter.)
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(TestcontainersConfiguration.class)
@@ -30,6 +34,9 @@ class LoginFlowApiTests {
 
     @LocalServerPort
     private int port;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void adminLogsInWritesWithTheCookieTokenAndLogsOut() throws Exception {
@@ -79,6 +86,24 @@ class LoginFlowApiTests {
 
             assertThat(admin.csrfToken()).isNotBlank();
             assertThat(admin.send(createPost(admin.request("/api/v1/posts"))).statusCode()).isEqualTo(201);
+        }
+    }
+
+    @Test
+    void theLoginSessionIsStoredInMysql() throws Exception {
+        try (LoginSession admin = LoginSession.login(port, LoginSession.ADMIN, LoginSession.ADMIN_PASSWORD)) {
+            // Spring Session's cookie instead of Tomcat's JSESSIONID.
+            assertThat(admin.cookie("JSESSIONID")).isNull();
+            String session = new String(Base64.getDecoder().decode(admin.cookie("SESSION")), StandardCharsets.UTF_8);
+
+            assertThat(jdbcTemplate.queryForObject(
+                    "select principal_name from SPRING_SESSION where session_id = ?", String.class, session))
+                    .isEqualTo(LoginSession.ADMIN);
+            assertThat(admin.send(admin.request("/dashboard").GET().build()).statusCode()).isEqualTo(200);
+
+            admin.send(admin.request("/logout").POST(HttpRequest.BodyPublishers.noBody()).build());
+            assertThat(jdbcTemplate.queryForObject("select count(*) from SPRING_SESSION where session_id = ?",
+                    Long.class, session)).isZero();
         }
     }
 

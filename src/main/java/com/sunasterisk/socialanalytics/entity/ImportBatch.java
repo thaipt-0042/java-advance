@@ -8,8 +8,8 @@ import java.time.Instant;
 /**
  * One successful Excel import of posts (all-or-nothing, so failed imports have no row).
  *
- * <p>The table also has {@code uploaded_by} (filled once login exists, #9) and {@code stats_refreshed_at} (filled by
- * the JMS listener, #12); they are mapped when those issues use them.
+ * <p>{@code uploaded_by} is the {@code users} row of the person who imported (null for the demo accounts, which have
+ * none). The table also has {@code stats_refreshed_at}, written by the JMS listener with SQL (#12).
  */
 @Entity
 @Table(name = "import_batches")
@@ -38,6 +38,10 @@ public class ImportBatch extends BaseEntity {
     /** {@code captured_at} shared by every snapshot of this import; null when the file had no metrics. */
     @Column(name = "captured_at")
     private Instant capturedAt;
+
+    /** {@code users.id} of the importer; null for a demo account. */
+    @Column(name = "uploaded_by")
+    private Long uploadedBy;
 
     protected ImportBatch() {
     }
@@ -70,6 +74,14 @@ public class ImportBatch extends BaseEntity {
 
     public int getSnapshotsCreated() {
         return snapshotsCreated;
+    }
+
+    public Long getUploadedBy() {
+        return uploadedBy;
+    }
+
+    public void setUploadedBy(Long uploadedBy) {
+        this.uploadedBy = uploadedBy;
     }
 
     public Instant getCapturedAt() {

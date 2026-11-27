@@ -3,6 +3,7 @@ package com.sunasterisk.socialanalytics.controller;
 import com.sunasterisk.socialanalytics.dto.ImportResultResponse;
 import com.sunasterisk.socialanalytics.entity.ImportBatch;
 import com.sunasterisk.socialanalytics.exception.InvalidFileException;
+import com.sunasterisk.socialanalytics.security.CurrentUser;
 import com.sunasterisk.socialanalytics.service.PostImportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -10,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.io.InputStream;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -41,12 +43,12 @@ public class ImportController {
     @ApiResponse(responseCode = "413", description = "File lớn hơn 5MB")
     @ApiResponse(responseCode = "409", description = "Một bài mới trong file vừa được tạo bởi request khác")
     @ApiResponse(responseCode = "422", description = "Có dòng lỗi (`errors` theo số dòng Excel) hoặc quá 5.000 dòng")
-    public ImportResultResponse importPosts(@RequestPart("file") MultipartFile file) {
+    public ImportResultResponse importPosts(@RequestPart("file") MultipartFile file, Authentication authentication) {
         if (file.isEmpty()) {
             throw new InvalidFileException("File rỗng");
         }
         try (InputStream in = file.getInputStream()) {
-            return importService.importPosts(displayName(file), in);
+            return importService.importPosts(displayName(file), in, CurrentUser.userId(authentication));
         } catch (IOException ex) {
             throw new InvalidFileException("Không đọc được file tải lên", ex);
         }

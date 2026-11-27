@@ -69,3 +69,19 @@ button {
 }
 
 button.link { border: none; background: none; color: var(--accent); padding: 0; }
+
+main.narrow { max-width: 420px; }
+.providers { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+a.button {
+    display: block;
+    text-align: center;
+    padding: 8px 14px;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    text-decoration: none;
+}
+#demo-login { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+#demo-login h3 { margin: 0; font-size: 15px; }
+#demo-login label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+#demo-login input { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; }

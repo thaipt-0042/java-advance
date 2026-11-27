@@ -22,6 +22,7 @@ import com.sunasterisk.socialanalytics.dto.PageResponse;
 import com.sunasterisk.socialanalytics.dto.PostResponse;
 import com.sunasterisk.socialanalytics.entity.SocialPlatform;
 import com.sunasterisk.socialanalytics.service.PostService;
+import com.sunasterisk.socialanalytics.web.LoginController;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * Access rules of both filter chains, with the demo login of the test profile ({@code application-test.properties})
  * and {@link PostService} mocked. No default user is set here, unlike the other controller tests.
  */
-@WebMvcTest(controllers = PostController.class, properties = {
+@WebMvcTest(controllers = {PostController.class, LoginController.class}, properties = {
     "app.demo-login.enabled=true",
     "app.demo-login.admin-password=test-admin-password",
     "app.demo-login.user-password=test-user-password",
@@ -137,7 +138,8 @@ class SecurityConfigTests {
     void publicPathsNeedNoLogin() throws Exception {
         mockMvc.perform(get("/login"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("name=\"_csrf\"")));
+                .andExpect(content().string(containsString("name=\"_csrf\"")))
+                .andExpect(content().string(containsString("Tài khoản demo")));
         // Not mapped in this slice, so 404 rather than a redirect to the login page.
         mockMvc.perform(get("/actuator/health")).andExpect(status().isNotFound());
         mockMvc.perform(get("/swagger-ui.html")).andExpect(status().isNotFound());
@@ -147,7 +149,7 @@ class SecurityConfigTests {
     void demoAccountsLogInWithTheirRole() throws Exception {
         mockMvc.perform(formLogin().user(DemoLoginProperties.ADMIN_USERNAME).password("test-admin-password"))
                 .andExpect(authenticated().withUsername("demo-admin").withRoles("ADMIN"))
-                .andExpect(redirectedUrl("/"));
+                .andExpect(redirectedUrl("/dashboard"));
         mockMvc.perform(formLogin().user(DemoLoginProperties.USER_USERNAME).password("test-user-password"))
                 .andExpect(authenticated().withUsername("demo-user").withRoles("USER"));
         mockMvc.perform(formLogin().user(DemoLoginProperties.ADMIN_USERNAME).password("wrong-password"))

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Đăng nhập - Social Analytics</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+</head>
+<body>
+<main class="narrow">
+    <section class="card">
+        <h2>Social Analytics</h2>
+        <p class="flash error" th:if="${error}">Đăng nhập không thành công. Hãy thử lại.</p>
+        <p class="flash ok" th:if="${logout}">Bạn đã đăng xuất.</p>
+
+        <div class="providers" th:unless="${#lists.isEmpty(providers)}">
+            <a class="button" th:each="provider : ${providers}" th:href="@{${provider.url}}"
+               th:text="${provider.label}">Đăng nhập bằng Facebook</a>
+        </div>
+
+        <!-- Demo accounts, dev profile only; Thymeleaf adds the _csrf field -->
+        <form th:if="${demoLogin}" th:action="@{/login}" method="post" id="demo-login">
+            <h3>Tài khoản demo</h3>
+            <label>Tên đăng nhập <input type="text" name="username" autocomplete="username" required></label>
+            <label>Mật khẩu <input type="password" name="password" autocomplete="current-password" required></label>
+            <button type="submit">Đăng nhập</button>
+        </form>
+
+        <p class="muted" th:if="${#lists.isEmpty(providers) and !demoLogin}">
+            Chưa cấu hình cách đăng nhập nào (FACEBOOK_CLIENT_ID / TWITTER_CLIENT_ID).
+        </p>
+    </section>
+</main>
+</body>
+</html>
