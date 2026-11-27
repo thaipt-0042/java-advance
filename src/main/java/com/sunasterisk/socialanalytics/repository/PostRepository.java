@@ -2,6 +2,8 @@ package com.sunasterisk.socialanalytics.repository;
 
 import com.sunasterisk.socialanalytics.entity.Post;
 import com.sunasterisk.socialanalytics.entity.SocialPlatform;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -35,6 +37,15 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     @Lock(LockModeType.PESSIMISTIC_READ)
     @Query("select p from Post p where p.id = :id")
     Optional<Post> findByIdForShare(@Param("id") Long id);
+
+    /**
+     * Existing posts among {@code externalIds} of one platform, locked like {@link #findByIdForUpdate} so a
+     * concurrent delete can't make the later UPDATE match 0 rows. One query for a whole import instead of one per row.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Post p where p.platform = :platform and p.externalId in :externalIds")
+    List<Post> findAllForUpdate(@Param("platform") SocialPlatform platform,
+            @Param("externalIds") Collection<String> externalIds);
 
     /** Deletes without loading the post first; returns the number of deleted rows (0 if it doesn't exist). */
     @Modifying

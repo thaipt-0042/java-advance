@@ -6,6 +6,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -26,9 +27,13 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  * <ul>
  *   <li>Framework errors (400 bad JSON / wrong type, 404 unknown path, 405, 415, ...) keep their status through
  *       {@link ResponseEntityExceptionHandler}; {@code code} is the status name, e.g. {@code METHOD_NOT_ALLOWED}.</li>
- *   <li>Bean Validation failures: 422 {@code VALIDATION}.</li>
+ *   <li>Bean Validation failures: 422 {@code VALIDATION}, {@code errors} as {@code [{field, message}]}.</li>
+ *   <li>{@link RowValidationException} (rows of an uploaded file): 422 {@code VALIDATION}, {@code errors} as
+ *       {@code [{row, column, message}]}.</li>
+ *   <li>{@link InvalidFileException}: 400 {@code BAD_REQUEST}.</li>
  *   <li>{@link ResourceNotFoundException}: 404 {@code NOT_FOUND}.</li>
- *   <li>{@link ConflictException} and {@link DataIntegrityViolationException}: 409 {@code CONFLICT}.</li>
+ *   <li>{@link ConflictException}, {@link DataIntegrityViolationException} and
+ *       {@link PessimisticLockingFailureException} (deadlock, lock wait timeout): 409 {@code CONFLICT}.</li>
  *   <li>Anything else: 500 {@code INTERNAL_ERROR}, details only in the log.</li>
  * </ul>
  */
@@ -38,6 +43,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     static final String CODE = "code";
+
+    private static final String CONCURRENT_CHANGE = "Dữ liệu xung đột với dữ liệu hiện có, hãy tải lại rồi thử lại";
 
     /** Bean Validation on a request body or a {@code @ParameterObject} (handled by the base class, so override). */
     @Override
@@ -49,6 +56,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 .toList();
         body.setProperty("errors", errors);
         return handleExceptionInternal(ex, body, headers, HttpStatus.UNPROCESSABLE_CONTENT, request);
+    }
+
+    @ExceptionHandler(RowValidationException.class)
+    ResponseEntity<Object> handleRowValidation(RowValidationException ex, WebRequest request) {
+        ProblemDetail body = problem(HttpStatus.UNPROCESSABLE_CONTENT, "VALIDATION", ex.getMessage());
+        body.setProperty("errors", ex.getErrors());
+        return handleExceptionInternal(ex, body, new HttpHeaders(), HttpStatus.UNPROCESSABLE_CONTENT, request);
+    }
+
+    @ExceptionHandler(InvalidFileException.class)
+    ResponseEntity<Object> handleInvalidFile(InvalidFileException ex, WebRequest request) {
+        return respond(ex, HttpStatus.BAD_REQUEST, "BAD_REQUEST", ex.getMessage(), request);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
@@ -68,8 +87,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     ResponseEntity<Object> handleDataIntegrityViolation(DataIntegrityViolationException ex, WebRequest request) {
         log.warn("Data integrity violation", ex);
-        return respond(ex, HttpStatus.CONFLICT, "CONFLICT",
-                "Dữ liệu xung đột với dữ liệu hiện có, hãy tải lại rồi thử lại", request);
+        return respond(ex, HttpStatus.CONFLICT, "CONFLICT", CONCURRENT_CHANGE, request);
+    }
+
+    /**
+     * The transaction lost a deadlock or waited too long for a row lock, e.g. two imports adding the same new posts
+     * in opposite orders. It was rolled back as a whole, so the client can simply retry.
+     */
+    @ExceptionHandler(PessimisticLockingFailureException.class)
+    ResponseEntity<Object> handleLockConflict(PessimisticLockingFailureException ex, WebRequest request) {
+        log.warn("Lock conflict", ex);
+        return respond(ex, HttpStatus.CONFLICT, "CONFLICT", CONCURRENT_CHANGE, request);
     }
 
     @ExceptionHandler(Exception.class)

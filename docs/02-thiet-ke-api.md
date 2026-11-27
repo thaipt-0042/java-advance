@@ -71,6 +71,7 @@ Mọi lỗi đều trả [`ProblemDetail`](https://www.rfc-editor.org/rfc/rfc945
 | Trùng khóa nghiệp vụ, kiểm tra trước trong service: báo rõ bị trùng gì | 409 | `CONFLICT` |
 | PUT với `updatedAt` cũ (bản ghi đã bị sửa sau khi client đọc) | 409 | `CONFLICT` |
 | `DataIntegrityViolationException` (hai request chen nhau cùng qua bước kiểm tra, ràng buộc DB chặn request sau): câu chung, `log.warn` kèm exception | 409 | `CONFLICT` |
+| `PessimisticLockingFailureException` (thua deadlock hoặc chờ khóa dòng quá lâu; transaction đã rollback cả, gửi lại là được): câu chung, `log.warn` kèm exception | 409 | `CONFLICT` |
 | JSON hỏng, sai kiểu, enum lạ trong body (`"platform": "INSTAGRAM"`), id trên path không phải số | 400 | `BAD_REQUEST` |
 | Sai method / sai `Content-Type` / path không tồn tại | 405 / 415 / 404 | `METHOD_NOT_ALLOWED` / `UNSUPPORTED_MEDIA_TYPE` / `NOT_FOUND` |
 | Lỗi không lường trước: không lộ chi tiết, `log.error` kèm exception | 500 | `INTERNAL_ERROR` |
@@ -106,8 +107,9 @@ Theo cùng quy ước với phần đã làm: tiền tố `/api/v1`, DTO, lỗi 
 | Có dòng lỗi (không ghi gì, Q4) | 422 `VALIDATION` | `errors`: `[{row, column, message}]`, `row` là số dòng trong Excel |
 | Không phải file `.xlsx` đọc được, thiếu cột bắt buộc, sai tên cột | 400 `BAD_REQUEST` | |
 | File quá giới hạn (5MB) | 413 `CONTENT_TOO_LARGE` | tên status của Spring 7 cho 413 |
-| Quá số dòng cho phép (5.000) | 422 `VALIDATION` | `errors` rỗng, `detail` ghi số dòng |
+| Quá số dòng cho phép (5.000) | 422 `VALIDATION` | `errors` rỗng, `detail` ghi giới hạn (đọc tới dòng dữ liệu thứ 5.001 thì dừng, không đếm hết file) |
 | Một bài mới trong file vừa được request khác tạo, sau khi import đã kiểm tra | 409 `CONFLICT` | ràng buộc UNIQUE chặn, không ghi gì |
+| Hai lần import cùng thêm các bài mới theo thứ tự ngược nhau (deadlock) | 409 `CONFLICT` | MySQL rollback bên thua, không ghi gì; gửi lại file là được |
 
 Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform` thì phân biệt như API): `platform`, `externalId`, `accountName` bắt buộc; `url`, `content`, `publishedAt` tùy chọn; `likes`, `shares`, `comments`, `followers` tùy chọn nhưng có một thì phải có đủ cả bốn. Giới hạn độ dài giống DTO của `/posts`. Kiểm tra trùng `(platform, externalId)` trong cùng file.
 
