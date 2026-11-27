@@ -12,6 +12,7 @@ Mini project của khóa **Java Spring Boot – Advance**: ứng dụng web giú
 | API Docs | springdoc-openapi (Swagger UI) |
 | Security | Spring Security 7 (form login demo ở `dev`, CSRF) |
 | Excel | Apache POI (`poi-ooxml`) |
+| Background job | `@Scheduled` + `@Async` (`ThreadPoolTaskExecutor`), ShedLock trên MySQL |
 | Logging | SLF4J + Logback (`logback-spring.xml`) |
 | Testing | JUnit 5 + Mockito + MockMvc, Testcontainers (MySQL) |
 
@@ -60,7 +61,7 @@ docker compose up -d
 - Health: http://localhost:8080/actuator/health
 - Swagger UI (chỉ profile `dev`): http://localhost:8080/swagger-ui.html
 - OpenAPI JSON (chỉ profile `dev`): http://localhost:8080/v3/api-docs
-- API: `/api/v1/posts`, `/api/v1/metrics` (xem `docs/02-thiet-ke-api.md`), `/api/v1/import-posts`, `/api/v1/export-report` (xem dưới)
+- API: `/api/v1/posts`, `/api/v1/metrics` (xem `docs/02-thiet-ke-api.md`), `/api/v1/import-posts`, `/api/v1/export-report`, `/api/v1/jobs/update-metrics` (xem dưới)
 
 ### Profile
 
@@ -141,6 +142,24 @@ curl -b cookies.txt -OJ "http://localhost:8080/api/v1/export-report?from=2026-11
 - Tối đa 100.000 bài mỗi file (422, hãy thu hẹp bộ lọc). File được tạo bằng `SXSSFWorkbook`: chỉ giữ 100 dòng mỗi sheet trong bộ nhớ, phần còn lại ghi ra file tạm (nén) và được xóa sau khi gửi.
 - Nội dung bài được ghi dạng text, kể cả khi bắt đầu bằng `=`: Excel không chạy nó như công thức.
 
+## Job cập nhật số liệu
+
+Job `updateSocialMetricsJob` chạy mỗi giờ (`METRICS_JOB_CRON`, mặc định `0 0 * * * *` theo `APP_TIME_ZONE`). Mỗi lần chạy:
+
+- Lấy mọi tài khoản đang có bài (`platform` + `accountName`, so như cột trong DB). Mỗi tài khoản là một tác vụ chạy song song (`METRICS_JOB_THREADS` luồng, mặc định 4, phải nhỏ hơn số kết nối DB).
+- Gọi API giả lập của Facebook / X (`docs/cau-hoi-lam-ro.md` Q6). Số liệu tăng dần theo giờ, có độ trễ và tỷ lệ lỗi cấu hình được (`app.metrics-job.mock.*`; profile `dev` cho 10% lời gọi lỗi). Lời gọi API nằm ngoài transaction.
+- Ghi một snapshot cho mỗi bài trong một transaction ngắn. Mọi snapshot của một lần chạy có chung `capturedAt` là lúc bắt đầu chạy; `followers` là của tài khoản.
+- Một tài khoản lỗi không dừng các tài khoản khác. Kết quả ghi vào `metric_update_runs`: `SUCCEEDED`, `PARTIAL` (một số tài khoản lỗi, có tên trong `errorMessage`) hoặc `FAILED`. Quá `app.metrics-job.account-timeout` (mặc định 5 phút) thì tài khoản chưa xong tính là lỗi.
+
+**Không chạy chồng**, kể cả khi chạy nhiều instance: khóa ShedLock `metrics-job` trên bảng `shedlock` của MySQL, thời gian theo đồng hồ của DB. Lần chạy theo lịch không lấy được khóa thì bỏ qua lượt đó. Instance chết giữa chừng thì khóa tự hết hạn sau `app.metrics-job.lock-at-most-for` (mặc định 10 phút); lần chạy sau đánh dấu lần chạy bỏ dở là `FAILED`.
+
+**API:**
+
+- `POST /api/v1/jobs/update-metrics` (`ADMIN`, CSRF): chạy ngay, chạy nền, trả 202 `{runId}`. Job đang chạy (ở bất kỳ instance nào) thì 409.
+- `GET /api/v1/jobs/update-metrics/latest`: lần chạy gần nhất (`status`, `triggerType`, `startedAt`, `finishedAt`, số tài khoản, số tài khoản lỗi, số snapshot, `errorMessage`) và `lastUpdatedAt` (lần `SUCCEEDED` / `PARTIAL` gần nhất). Chưa chạy lần nào thì các trường là `null`.
+
+Cấu hình sai (cron, kích thước pool, `lock-at-most-for` không dài hơn `account-timeout` ít nhất 1 phút, tỷ lệ lỗi ngoài 0..1) thì app không khởi động.
+
 ## Test
 
 ```bash
@@ -155,6 +174,7 @@ curl -b cookies.txt -OJ "http://localhost:8080/api/v1/export-report?from=2026-11
 | Test repository | `repository/*RepositoryTests` | `@DataJpaTest` trên MySQL thật, mỗi test rollback: query tự viết, ràng buộc của schema |
 | Test API đầy đủ | `controller/*ApiTests` | `@SpringBootTest` + MockMvc trên MySQL thật, không rollback (mỗi request commit như production); gồm cả test hai request chen nhau. Cũng chạy với `support/AdminRequests` |
 | Đọc / ghi Excel | `excel/ExcelReaderTests`, `ExcelWriterTests` | Unit test, file `.xlsx` tạo và đọc lại trong bộ nhớ (`support/Xlsx`, không commit file nhị phân) |
+| Job | `service/metrics/*Tests`, `client/MockSocialMetricsClientTests`, `controller/JobApiTests` | Service với Mockito (tài khoản lỗi, quá thời gian, hàng đợi đầy, khóa đang bị giữ); updater và API trên MySQL thật (bài bị xóa giữa chừng, lần chạy bỏ dở, lịch chạy bỏ lượt khi bị khóa) |
 | Quyền truy cập | `security/SecurityConfigTests`, `DemoLoginDisabledTests` | `@WebMvcTest` với cấu hình security thật: 401/403, CSRF, đường dẫn không khai báo, đăng nhập demo |
 | Server thật | `controller/ForwardedHeadersApiTests`, `ImportUploadLimitApiTests`, `security/LoginFlowApiTests` | `RANDOM_PORT` + `java.net.http` (`support/LoginSession` đăng nhập như trình duyệt): những gì Tomcat làm mà MockMvc bỏ qua (header proxy, giới hạn upload, cookie CSRF) |
 

@@ -22,6 +22,7 @@
         <jacoco.version>0.8.16</jacoco.version>
         <excel-streaming-reader.version>6.0.0</excel-streaming-reader.version>
         <poi.version>6.0.0</poi.version>
+        <shedlock.version>7.11.0</shedlock.version>
         <argLine/>
     </properties>
 
@@ -80,6 +81,18 @@
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
             <version>${poi.version}</version>
+        </dependency>
+
+        <!-- Background job: one run at a time across instances (lock table in MySQL) -->
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-spring</artifactId>
+            <version>${shedlock.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-provider-jdbc-template</artifactId>
+            <version>${shedlock.version}</version>
         </dependency>
 
         <!-- Health check -->
