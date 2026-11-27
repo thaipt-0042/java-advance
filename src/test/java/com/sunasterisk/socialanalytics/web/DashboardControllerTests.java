@@ -2,7 +2,9 @@ package com.sunasterisk.socialanalytics.web;
 
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
@@ -25,6 +27,7 @@ import com.sunasterisk.socialanalytics.security.SecurityConfig;
 import com.sunasterisk.socialanalytics.service.metrics.MetricUpdateService;
 import com.sunasterisk.socialanalytics.support.FixedClockConfiguration;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -122,6 +125,35 @@ class DashboardControllerTests {
     void homeAndDashboardNeedALogin() throws Exception {
         mockMvc.perform(get("/dashboard")).andExpect(redirectedUrl("/login"));
         mockMvc.perform(get("/").with(user("viewer").roles("USER"))).andExpect(redirectedUrl("/dashboard"));
+    }
+
+    @Test
+    void theRunStatusFragmentIsRenderedAloneForTheLiveRefresh() throws Exception {
+        when(metricUpdateService.latest()).thenReturn(PARTIAL_RUN);
+
+        mockMvc.perform(get("/dashboard/run-status").with(user("viewer").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(allOf(startsWith("<dl id=\"run-status\">"),
+                        containsString("Thành công một phần"), not(containsString("<html")))));
+        mockMvc.perform(get("/dashboard/run-status")).andExpect(redirectedUrl("/login"));
+    }
+
+    @Test
+    void thePageLoadsTheChartAndLiveScriptsAndTheyAreServed() throws Exception {
+        when(metricUpdateService.latest()).thenReturn(PARTIAL_RUN);
+
+        mockMvc.perform(get("/dashboard").with(user("viewer").roles("USER")))
+                .andExpect(content().string(allOf(containsString("<canvas id=\"chart\""),
+                        // The page links the versioned path (the version from pom.xml), so browsers cache it safely.
+                        matchesPattern("(?s).*/webjars/chart\\.js/\\d+\\.\\d+\\.\\d+/dist/chart\\.umd\\.min\\.js.*"),
+                        containsString("/js/dashboard.js"),
+                        containsString("<meta name=\"_csrf_header\" content=\"X-XSRF-TOKEN\">"))));
+        // Version-less WebJar paths resolve to the versions pinned in pom.xml, without a login.
+        for (String path : List.of("/webjars/chart.js/dist/chart.umd.min.js",
+                "/webjars/sockjs-client/dist/sockjs.min.js", "/webjars/stomp__stompjs/bundles/stomp.umd.min.js",
+                "/js/dashboard.js")) {
+            mockMvc.perform(get(path)).andExpect(status().isOk());
+        }
     }
 
     @Test

@@ -11,7 +11,7 @@ Mini project của khóa **Java Spring Boot – Advance**: ứng dụng web giú
 | Database | MySQL 8.4 (JPA / Hibernate), migration bằng Flyway |
 | API Docs | springdoc-openapi (Swagger UI) |
 | Security | Spring Security 7: đăng nhập Facebook / X (OAuth2, PKCE), form login demo ở `dev`, CSRF; phiên lưu MySQL (Spring Session JDBC) |
-| Giao diện | Thymeleaf (`templates/`), CSS trong `static/css` |
+| Giao diện | Thymeleaf (`templates/`), JS thuần (`static/js/dashboard.js`), Chart.js 4.6.1, SockJS 1.6.1, STOMP.js 7.3.0 (WebJars, phiên bản ghim trong `pom.xml`) |
 | Excel | Apache POI (`poi-ooxml`) |
 | Background job | `@Scheduled` + `@Async` (`ThreadPoolTaskExecutor`), ShedLock trên MySQL |
 | Messaging | JMS, Apache Artemis 2.53 (trước đây là ActiveMQ Artemis), chạy bằng Docker Compose |
@@ -200,6 +200,7 @@ Bảng được tính lại qua queue `analytics.stats-refresh` trên Apache Art
 - `GET /api/v1/chart-data?from=&to=&platform=`: thống kê theo ngày cho biểu đồ, mặc định 7 ngày gần nhất, tối đa 366 ngày. Mỗi mảng (`postsTracked`, `postsMeasured`, `likes`, `shares`, `comments`, `followers`) dài bằng `dates`. Ngày không có dữ liệu giữ số của ngày gần nhất trước đó với `postsMeasured` = 0; trước lần đo đầu tiên thì là 0 (`docs/cau-hoi-lam-ro.md` Q12). Kèm `lastUpdatedAt`.
 - WebSocket (STOMP qua SockJS) ở `/ws`, topic `/topic/metrics`. Sau khi thống kê được tính lại thì gửi `STATS_UPDATED {fromDate, toDate}`, sau mỗi lần chạy job thì gửi `JOB_FINISHED {runId, status, finishedAt}`. Event không chứa số liệu: trang gọi lại `/api/v1/chart-data`.
 - Chỉ người đã đăng nhập mới kết nối được. Frame `CONNECT` phải kèm CSRF token (dạng đã mask, lấy từ thẻ meta `_csrf` của dashboard) trong header `X-XSRF-TOKEN`. Chỉ được subscribe `/topic/metrics`. Tầng HTTP không kiểm CSRF riêng cho `/ws/**`, vì SockJS không gắn được header vào các request XHR / iframe khi WebSocket bị chặn.
+- Dashboard vẽ biểu đồ theo ngày bằng Chart.js (chọn likes / shares / comments / followers, 7 / 30 / 90 ngày; điểm của ngày không đo được vẽ dạng ✕). Trang kết nối `/ws`, nhận `STATS_UPDATED` thì tải lại `/chart-data`, nhận `JOB_FINISHED` thì tải lại khối "Lần chạy gần nhất" (`GET /dashboard/run-status`), không reload trang. Mất kết nối thì tự kết nối lại sau 5 giây và tải lại biểu đồ. Thư viện JS phục vụ từ chính app (`/webjars/...`), không dùng CDN, kể cả trang iframe của SockJS.
 - Giới hạn: broker STOMP nằm trong bộ nhớ của từng instance. Event chỉ tới trình duyệt nối vào instance đã phát ra nó: `STATS_UPDATED` do instance đang giữ queue thống kê phát, `JOB_FINISHED` do instance đã chạy job phát.
 
 ## Test

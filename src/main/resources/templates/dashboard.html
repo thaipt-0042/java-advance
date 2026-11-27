@@ -28,7 +28,8 @@
 
     <section class="card">
         <h2>Cập nhật số liệu</h2>
-        <dl>
+        <!-- Re-rendered by dashboard.js after JOB_FINISHED (GET /dashboard/run-status) -->
+        <dl id="run-status" th:fragment="run-status">
             <dt>Cập nhật lần cuối</dt>
             <dd id="last-updated">
                 <strong th:if="${view.lastUpdated}" th:text="${view.lastUpdated}">20/11/2026 10:00:05</strong>
@@ -57,6 +58,37 @@
             <button type="submit">Chạy job ngay</button>
         </form>
     </section>
+
+    <section class="card" id="charts" th:data-time-zone="${view.timeZone}">
+        <div class="chart-header">
+            <h2>Biểu đồ theo ngày</h2>
+            <label>Số liệu
+                <select id="metric">
+                    <option value="likes" selected>Likes</option>
+                    <option value="shares">Shares</option>
+                    <option value="comments">Comments</option>
+                    <option value="followers">Followers</option>
+                </select>
+            </label>
+            <label>Khoảng
+                <select id="days">
+                    <option value="7" selected>7 ngày</option>
+                    <option value="30">30 ngày</option>
+                    <option value="90">90 ngày</option>
+                </select>
+            </label>
+            <span id="live" class="live" data-state="connecting">Đang kết nối…</span>
+        </div>
+        <canvas id="chart" height="320" aria-label="Biểu đồ số liệu theo ngày" role="img"></canvas>
+        <p class="muted">Mỗi điểm là tổng tính đến hết ngày đó (giờ <span th:text="${view.timeZone}">Asia/Ho_Chi_Minh</span>).
+            Ngày không đo được thì giữ số của ngày trước. Biểu đồ tự cập nhật khi có số liệu mới.</p>
+    </section>
 </main>
+
+<!-- Exact versions come from pom.xml (WebJars); the paths below are version-less (webjars-locator-lite). -->
+<script th:src="@{/webjars/chart.js/dist/chart.umd.min.js}"></script>
+<script th:src="@{/webjars/sockjs-client/dist/sockjs.min.js}"></script>
+<script th:src="@{/webjars/stomp__stompjs/bundles/stomp.umd.min.js}"></script>
+<script th:src="@{/js/dashboard.js}"></script>
 </body>
 </html>

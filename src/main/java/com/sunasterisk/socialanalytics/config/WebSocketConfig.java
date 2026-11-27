@@ -19,8 +19,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // Same origin only (the default): the page that connects is the dashboard of this app.
-        registry.addEndpoint("/ws").withSockJS();
+        // Same origin only (the default): the page that connects is the dashboard of this app. The iframe transport
+        // loads the SockJS client in a page of its own: from this app's WebJar, not from an external CDN.
+        registry.addEndpoint("/ws").withSockJS().setClientLibraryUrl(SOCKJS_CLIENT_URL);
     }
 
     @Override
@@ -28,6 +29,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registry.enableSimpleBroker("/topic");
         registry.setApplicationDestinationPrefixes("/app");
     }
+
+    /** SockJS client served by the app (version from pom.xml, resolved by webjars-locator-lite). */
+    static final String SOCKJS_CLIENT_URL = "/webjars/sockjs-client/dist/sockjs.min.js";
 
     /** The only destination clients subscribe to; see {@link DashboardEventPublisher}. */
     public static final String METRICS_TOPIC = "/topic/metrics";
