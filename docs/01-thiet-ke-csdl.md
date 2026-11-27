@@ -173,12 +173,12 @@ erDiagram
 | Cột | Kiểu (MySQL) | Ghi chú |
 |---|---|---|
 | `client_registration_id` | VARCHAR(100), PK | `facebook` / `twitter` (id đăng ký client trong cấu hình) |
-| `principal_name` | VARCHAR(200), PK | tên principal sau khi login, đề xuất là id tài khoản phía provider |
+| `principal_name` | VARCHAR(200), PK | tên principal sau khi login: id tài khoản phía provider (`SocialUser.getName()`, #9) |
 | `access_token_type` | VARCHAR(100) | `Bearer` |
 | `access_token_value` | BLOB | token truy cập |
 | `access_token_issued_at`, `access_token_expires_at` | TIMESTAMP | |
 | `access_token_scopes` | VARCHAR(1000), NULL | |
-| `refresh_token_value` | BLOB, NULL | Facebook không cấp refresh token theo luồng thường; X có thể cấp khi xin scope `offline.access` (kiểm tra khi làm #9) |
+| `refresh_token_value` | BLOB, NULL | Facebook không cấp refresh token theo luồng thường; X chỉ cấp khi xin scope `offline.access`, mà #9 không xin (chỉ cần đăng nhập), nên hiện luôn NULL |
 | `refresh_token_issued_at` | TIMESTAMP, NULL | |
 | `created_at` | TIMESTAMP, mặc định thời điểm insert | |
 

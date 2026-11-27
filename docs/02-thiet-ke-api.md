@@ -12,7 +12,7 @@ Swagger UI (profile `dev`): http://localhost:8080/swagger-ui.html
 | GET | `/api/v1/posts` | Danh sách bài viết, lọc `platform`, `q`; phân trang `page`, `size` | 200 | 422 |
 | GET | `/api/v1/posts/{id}` | Chi tiết | 200 | 404 |
 | POST | `/api/v1/posts` | Thêm bài viết, header `Location` trỏ tới bài mới | 201 | 409, 422 |
-| PUT | `/api/v1/posts/{id}` | Thay các trường sửa được (`accountName`, `url`, `content`, `publishedAt`), kèm `updatedAt` đã đọc | 200 | 404, 409, 422 |
+| PUT | `/api/v1/posts/{id}` | Thay các trường sửa được (`accountName`, `url`, `content`, `publishedAt`, `adCost` từ #15), kèm `updatedAt` đã đọc | 200 | 404, 409, 422 |
 | DELETE | `/api/v1/posts/{id}` | Xóa bài viết và mọi snapshot của nó | 204 | 404 |
 | GET | `/api/v1/metrics` | Danh sách snapshot, lọc `postId`, `from`, `to`; phân trang | 200 | 404, 422 |
 | GET | `/api/v1/metrics/{id}` | Chi tiết | 200 | 404 |
@@ -22,7 +22,8 @@ Swagger UI (profile `dev`): http://localhost:8080/swagger-ui.html
 
 - Request/response là DTO (`dto/`), không trả entity ra ngoài. Thời gian theo ISO-8601 UTC, ví dụ `2026-03-01T03:00:00Z`.
 - `platform` + `externalId` là định danh của bài viết, `postId` là chủ của snapshot: không sửa được qua PUT. Muốn đổi thì xóa rồi tạo lại.
-- PUT thay toàn bộ các trường sửa được: trường không gửi (`url`, `content`, `publishedAt`) thành `null`.
+- PUT thay toàn bộ các trường sửa được: trường không gửi (`url`, `content`, `publishedAt`, `adCost`) thành `null`.
+- `adCost` (#15, Q7): chi phí quảng cáo bằng USD, tùy chọn, ≥ 0, tối đa 13 chữ số phần nguyên và 2 chữ số thập phân (`DECIMAL(15,2)`); sai thì 422.
 - PUT bắt buộc gửi `updatedAt` mà client đọc được từ GET (hoặc từ response của lần sửa trước). Bản ghi đã bị sửa sau đó (`updatedAt` khác) thì trả 409, client tải lại rồi sửa tiếp. Xem mục "Ghi đồng thời".
 
 ### Danh sách và phân trang
@@ -113,7 +114,7 @@ API chỉ nhận CSRF token trong header `X-XSRF-TOKEN` (giá trị của cookie
 | Một bài mới trong file vừa được request khác tạo, sau khi import đã kiểm tra | 409 `CONFLICT` | ràng buộc UNIQUE chặn, không ghi gì |
 | Hai lần import cùng thêm các bài mới theo thứ tự ngược nhau (deadlock) | 409 `CONFLICT` | MySQL rollback bên thua, không ghi gì; gửi lại file là được |
 
-Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform` thì phân biệt như API): `platform`, `externalId`, `accountName` bắt buộc; `url`, `content`, `publishedAt` tùy chọn; `likes`, `shares`, `comments`, `followers` tùy chọn nhưng có một thì phải có đủ cả bốn. Giới hạn độ dài giống DTO của `/posts`. Kiểm tra trùng `(platform, externalId)` trong cùng file.
+Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform` thì phân biệt như API): `platform`, `externalId`, `accountName` bắt buộc; `url`, `content`, `publishedAt`, `adCost` (#15) tùy chọn; `likes`, `shares`, `comments`, `followers` tùy chọn nhưng có một thì phải có đủ cả bốn. Giới hạn độ dài giống DTO của `/posts`. Kiểm tra trùng `(platform, externalId)` trong cùng file.
 
 - Gửi `IMPORT_COMPLETED` (#12) sau khi commit.
 - File quá lớn phải nhận được 413 chứ không bị đứt kết nối: đặt `server.tomcat.max-swallow-size` lớn hơn giới hạn upload, test với file lớn hơn giới hạn thật (reviewer repo cũ đã nhắc).
@@ -123,7 +124,7 @@ Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform`
 `GET /api/v1/export-report?from=2026-11-01&to=2026-11-30&platform=FACEBOOK` (mọi tham số tùy chọn; `from`/`to` là ngày `publishedAt` theo giờ Việt Nam, bao gồm cả hai đầu, tối đa 366 ngày).
 
 - 200, `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment; filename="social-report-2026-11-20.xlsx"` (ngày xuất theo giờ Việt Nam).
-- Nội dung (đã chốt, Q11): sheet "Posts" (mỗi bài kèm snapshot mới nhất, theo thứ tự tạo; cột như file import, thêm `capturedAt`; #7), sheet "Daily" (`date`, `platform`, `postsTracked`, `postsMeasured`, `likes`, `shares`, `comments`, `followers` của các ngày trong `from`..`to`; #12). #15 thêm cột chi phí quảng cáo quy ra VND và sheet tỷ giá (Q7).
+- Nội dung (đã chốt, Q11): sheet "Posts" (mỗi bài kèm snapshot mới nhất, theo thứ tự tạo; cột như file import, thêm `capturedAt`; #7), sheet "Daily" (`date`, `platform`, `postsTracked`, `postsMeasured`, `likes`, `shares`, `comments`, `followers` của các ngày trong `from`..`to`; #12). #15 thêm cột `adCost`, `adCostVnd` (quy ra VND theo tỷ giá hôm nay, làm tròn tới đồng) vào "Posts" và sheet "ExchangeRates" (`date`, `from`, `to`, `rate`, `note`); không lấy được tỷ giá thì vẫn xuất, `adCostVnd` trống và `note` ghi lý do (Q7).
 - `from` sau `to`, khoảng quá dài, tham số sai kiểu (ngày không đúng dạng `yyyy-MM-dd`, nền tảng lạ) hoặc hơn 100.000 bài khớp bộ lọc: 422.
 
 ### Chạy job thủ công (#10, #11)
@@ -157,7 +158,7 @@ Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform`
 
 ### WebSocket (#13)
 
-- Endpoint STOMP: `/ws` (SockJS). Chỉ user đã đăng nhập; frame `CONNECT` phải kèm CSRF token (lấy từ thẻ meta của trang).
+- Endpoint STOMP: `/ws` (SockJS). Chỉ user đã đăng nhập; frame `CONNECT` phải kèm CSRF token dạng đã mask (lấy từ thẻ meta `_csrf` của trang) trong header `X-XSRF-TOKEN`. Chỉ được subscribe `/topic/metrics`.
 - Topic `/topic/metrics`, event dạng `{type, occurredAt, …}`, không chứa số liệu (client gọi lại `/chart-data`):
   - `STATS_UPDATED` `{fromDate, toDate}`: thống kê các ngày trong khoảng này vừa được tính lại.
   - `JOB_FINISHED` `{runId, status, finishedAt}`: dashboard cập nhật "Last updated time".
@@ -165,7 +166,8 @@ Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform`
 ### SOAP (#15)
 
 - Endpoint giả lập (Spring-WS) trong app: `/soap/*`, WSDL tại `/soap/exchange-rates.wsdl`, operation lấy tỷ giá theo cặp tiền và ngày. Dùng tiền tố `/soap` vì `/ws` đã dành cho WebSocket.
-- Client (`WebServiceTemplate`) đọc URL và timeout từ cấu hình. SOAP fault hoặc timeout khi dashboard cần tỷ giá thì dashboard hiện "không lấy được tỷ giá", không lỗi cả trang; nếu có API trả tỷ giá thì trả 502 `BAD_GATEWAY` cùng format lỗi.
+- Client (`WebServiceTemplate`) đọc URL và timeout từ cấu hình. SOAP fault hoặc timeout khi dashboard cần tỷ giá thì dashboard hiện "không lấy được tỷ giá", không lỗi cả trang.
+- `GET /api/v1/exchange-rates/usd-vnd?date=2026-11-20` (cần đăng nhập; `date` tùy chọn, mặc định hôm nay theo giờ Việt Nam): 200 `{from, to, date, rate}`. Ngày sai dạng: 422 với `field` = `date`. Dịch vụ tỷ giá lỗi (fault, timeout, không kết nối được): 502 `BAD_GATEWAY` cùng format lỗi.
 - Dùng kết quả ở đâu (đã chốt, Q7 = b + c): dashboard hiện tỷ giá USD → VND và tổng chi phí quảng cáo quy ra VND; file export thêm cột chi phí quy ra VND và sheet tỷ giá. Bài viết có thêm `adCost` (USD, tùy chọn) ở `/posts` và file import.
 
 ### Trang web (Thymeleaf, #9, #11, #14)
@@ -177,6 +179,7 @@ Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform`
 | GET | `/login/oauth2/code/{facebook\|twitter}` | Callback OAuth2 (Spring Security cung cấp) |
 | POST | `/logout` | Đăng xuất (CSRF) |
 | GET | `/`, `/dashboard` | Dashboard: "Last updated time", trạng thái lần chạy gần nhất, biểu đồ, tỷ giá; admin thấy thêm nút chạy job và form import |
+| GET | `/dashboard/run-status` | Riêng khối "Lần chạy gần nhất" (fragment), trang tải lại khi nhận `JOB_FINISHED` (#14) |
 | POST | `/dashboard/update-metrics` | Form Thymeleaf (trường ẩn `_csrf`), `ADMIN`: chạy job, quay lại dashboard kèm thông báo "đã bắt đầu" hoặc "job đang chạy" |
 
 - Đăng xuất và nút chạy job là form Thymeleaf submit thường (CSRF qua trường ẩn `_csrf`), đúng ý "CSRF token và form submission" của đề.
