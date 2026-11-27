@@ -1,6 +1,5 @@
 package com.sunasterisk.socialanalytics.controller;
 
-import static org.assertj.core.api.Assertions.fail;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -9,13 +8,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.sunasterisk.socialanalytics.support.LockWaits;
 import com.sunasterisk.socialanalytics.support.Xlsx;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.Statement;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -151,41 +145,12 @@ class ConcurrentDeleteApiTests extends ApiTestBase {
             Future<ResultActions> response = new TransactionTemplate(transactionManager).execute(tx -> {
                 jdbcTemplate.update(sql, param);
                 Future<ResultActions> pending = executor.submit(request);
-                awaitBlockedOnRowLock(pending);
+                LockWaits.awaitRowLockWait(mysql, pending);
                 return pending;
             });
             return response.get(30, TimeUnit.SECONDS);
         } finally {
             executor.shutdownNow();
         }
-    }
-
-    /**
-     * Waits until MySQL reports a row lock wait, i.e. the request is blocked on the row deleted above.
-     * (performance_schema is read instead of information_schema.innodb_trx, which is a cache refreshed only
-     * when not read for 0.1s.)
-     */
-    private void awaitBlockedOnRowLock(Future<?> pending) {
-        String rootPassword = mysql.getEnvMap().get("MYSQL_ROOT_PASSWORD");
-        Instant deadline = Instant.now().plus(Duration.ofSeconds(10));
-        try (Connection root = DriverManager.getConnection(mysql.getJdbcUrl(), "root", rootPassword);
-                Statement statement = root.createStatement()) {
-            while (Instant.now().isBefore(deadline)) {
-                if (pending.isDone()) {
-                    // Finished without touching the locked row (e.g. it read nothing): nothing to wait for.
-                    return;
-                }
-                try (ResultSet rs = statement.executeQuery("select count(*) from performance_schema.data_lock_waits")) {
-                    rs.next();
-                    if (rs.getInt(1) > 0) {
-                        return;
-                    }
-                }
-                Thread.sleep(20);
-            }
-        } catch (Exception ex) {
-            throw new IllegalStateException(ex);
-        }
-        fail("Request was not blocked by the uncommitted delete within 10s");
     }
 }

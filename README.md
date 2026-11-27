@@ -31,8 +31,11 @@ src/main/java/com/sunasterisk/socialanalytics
 └── util/          # helper
 
 src/main/resources/db/migration   # Flyway migration (V1__init_schema.sql, ...)
-docs/01-thiet-ke-csdl.md          # thiết kế CSDL
-docs/02-thiet-ke-api.md           # API CRUD /posts, /metrics và format lỗi
+docs/00-phan-tich-yeu-cau.md      # phân tích yêu cầu, đối chiếu đề bài ↔ issue
+docs/01-thiet-ke-csdl.md          # thiết kế CSDL: bảng hiện có + lộ trình schema
+docs/02-thiet-ke-api.md           # API đã làm, API dự kiến, format lỗi
+docs/03-kien-truc.md              # package, bảo mật, job, JMS, WebSocket, SOAP
+docs/cau-hoi-lam-ro.md            # điểm đề chưa rõ (chờ trả lời), điều cần báo mentor
 .github/workflows/ci.yml          # CI: ./mvnw verify trên GitHub Actions
 ```
 
@@ -94,7 +97,7 @@ curl -F "file=@posts.xlsx" http://localhost:8080/api/v1/import-posts
 - **Bài đã có** (cùng `platform` + `externalId`, so như cột trong DB: không phân biệt hoa thường và dấu) thì **cập nhật** theo file. Chỉ cập nhật cột có trong file: file không có cột `content` thì giữ nguyên nội dung cũ; ô trống trong cột có mặt thì xóa giá trị cũ (giống PUT). Bài không có gì thay đổi thì không bị ghi lại và không tính vào `updatedPosts`.
 - Một bài xuất hiện hai lần trong cùng file là lỗi dòng.
 - Dòng có số liệu tạo thêm một snapshot. Mọi snapshot của một lần import có chung `capturedAt` là thời điểm import.
-- Giới hạn: file tối đa 5MB (lớn hơn thì 413), tối đa 5.000 dòng dữ liệu (422). File không phải `.xlsx` đọc được (kể cả `.xls`, file có mật khẩu), thiếu cột bắt buộc, không có dòng dữ liệu thì 400.
+- Giới hạn: file tối đa 5MB (lớn hơn thì 413), tối đa 5.000 dòng dữ liệu (422; đọc tới dòng thứ 5.001 thì dừng, không đọc hết file). File không phải `.xlsx` đọc được (kể cả `.xls`, file có mật khẩu), thiếu cột bắt buộc, không có dòng dữ liệu thì 400.
 - Mỗi lần import thành công ghi một dòng `import_batches`. Response: `{batchId, totalRows, createdPosts, updatedPosts, snapshotsCreated, capturedAt}`.
 
 ## Xuất báo cáo Excel
