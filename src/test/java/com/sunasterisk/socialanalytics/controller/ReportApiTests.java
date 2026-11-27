@@ -147,6 +147,9 @@ class ReportApiTests extends ApiTestBase {
             assertThat(sheet.getRow(0)).extracting(Cell::getStringCellValue).containsExactly("platform",
                     "externalId", "accountName", "url", "content", "publishedAt", "likes", "shares", "comments",
                     "followers", "capturedAt");
+            // No statistics in 1999 either.
+            assertThat(workbook.getSheet("Daily").getLastRowNum()).isZero();
+            assertThat(workbook.getSheetName(1)).isEqualTo("Daily");
         }
     }
 

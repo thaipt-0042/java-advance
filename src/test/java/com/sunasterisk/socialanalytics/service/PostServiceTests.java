@@ -4,8 +4,10 @@ import static com.sunasterisk.socialanalytics.support.TestEntities.persisted;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,6 +29,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -42,6 +45,9 @@ class PostServiceTests {
 
     @Mock
     private PostRepository postRepository;
+
+    @Mock
+    private StatsChanges statsChanges;
 
     @InjectMocks
     private PostService postService;
@@ -146,6 +152,19 @@ class PostServiceTests {
         assertThat(response).isEqualTo(new PostResponse(7L, SocialPlatform.FACEBOOK, "ext-7", "new.account",
                 "https://x.com/p/7", "Nội dung mới", Instant.parse("2026-02-27T00:00:00Z"), CREATED, UPDATED));
         verify(postRepository, never()).findById(any());
+        // A new account changes the followers summed per account.
+        verify(statsChanges).postChanged(7L);
+    }
+
+    @Test
+    void updateKeepingTheAccountLeavesTheStatisticsAlone() {
+        Post post = samplePost(7L);
+        when(postRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(post));
+        when(postRepository.saveAndFlush(post)).thenReturn(post);
+
+        postService.update(7L, new PostUpdateRequest(post.getAccountName(), null, "other content", null, UPDATED));
+
+        verify(statsChanges, never()).postChanged(anyLong());
     }
 
     @Test
@@ -171,14 +190,29 @@ class PostServiceTests {
     }
 
     @Test
-    void deleteChecksDeletedRowCount() {
+    void deleteLocksThePostAndTellsTheStatisticsBeforeDeleting() {
+        when(postRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(samplePost(7L)));
         when(postRepository.deleteByIdReturningCount(7L)).thenReturn(1);
-        when(postRepository.deleteByIdReturningCount(99L)).thenReturn(0);
+        when(postRepository.findByIdForUpdate(99L)).thenReturn(Optional.empty());
 
         postService.delete(7L);
+        InOrder order = inOrder(statsChanges, postRepository);
+        order.verify(statsChanges).postChanged(7L);
+        order.verify(postRepository).deleteByIdReturningCount(7L);
+
         assertThatThrownBy(() -> postService.delete(99L))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Không tìm thấy bài viết có id = 99");
+        verify(postRepository, never()).deleteByIdReturningCount(99L);
+        verify(statsChanges, never()).postChanged(99L);
+    }
+
+    @Test
+    void deleteOfAPostGoneAfterTheLockIs404() {
+        when(postRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(samplePost(7L)));
+        when(postRepository.deleteByIdReturningCount(7L)).thenReturn(0);
+
+        assertThatThrownBy(() -> postService.delete(7L)).isInstanceOf(ResourceNotFoundException.class);
     }
 
     private static Post samplePost(long id) {

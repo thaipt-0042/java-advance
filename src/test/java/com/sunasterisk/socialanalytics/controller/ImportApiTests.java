@@ -11,21 +11,57 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import com.sunasterisk.socialanalytics.support.StatsQueue;
 import com.sunasterisk.socialanalytics.support.Xlsx;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jms.core.JmsTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.ResultActions;
 
 /** Import through the whole stack on MySQL; each request commits. */
 class ImportApiTests extends ApiTestBase {
 
+    /**
+     * The whole chain after commit: IMPORT_COMPLETED on the broker, the listener recomputes today's statistics and
+     * marks the batch.
+     */
+    @Test
+    void anImportRefreshesTheStatisticsThroughTheQueue() throws Exception {
+        StatsQueue.awaitDrained(jmsTemplate);
+        String t = token();
+        String body = importFile(t + ".xlsx", Xlsx.of(POST_HEADER,
+                        row("TWITTER", t + "-1", "page-" + t, null, null, null, 7, 1, 2, 300)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long batchId = ((Number) JsonPath.read(body, "$.batchId")).longValue();
+
+        long start = System.nanoTime();
+        while (jdbcTemplate.queryForObject("select stats_refreshed_at from import_batches where id = ?",
+                LocalDateTime.class, batchId) == null) {
+            assertThat(Duration.ofNanos(System.nanoTime() - start)).as("statistics refreshed")
+                    .isLessThan(Duration.ofSeconds(30));
+            Thread.sleep(100);
+        }
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        assertThat(jdbcTemplate.queryForObject("select posts_measured from daily_platform_stats "
+                + "where stat_date = ? and platform = 'TWITTER'", Integer.class, today)).isPositive();
+    }
+
+
     private static final String XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private JmsTemplate jmsTemplate;
 
     @Test
     void importsPostsWithSnapshotsThenReimportUpdatesThem() throws Exception {

@@ -9,6 +9,7 @@ import com.sunasterisk.socialanalytics.exception.ConflictException;
 import com.sunasterisk.socialanalytics.repository.AccountPostRepository;
 import com.sunasterisk.socialanalytics.repository.AccountPostRepository.Account;
 import com.sunasterisk.socialanalytics.repository.MetricUpdateRunRepository;
+import com.sunasterisk.socialanalytics.service.StatsChanges;
 import com.sunasterisk.socialanalytics.util.DbTime;
 import java.time.Clock;
 import java.time.Duration;
@@ -55,18 +56,21 @@ public class MetricUpdateService {
     private final AccountMetricsUpdater accountUpdater;
     private final JobLauncher jobLauncher;
     private final LockProvider lockProvider;
+    private final StatsChanges statsChanges;
     private final MetricsJobProperties properties;
     private final Clock clock;
     private final TransactionTemplate transaction;
 
     public MetricUpdateService(MetricUpdateRunRepository runRepository, AccountPostRepository accountPostRepository,
             AccountMetricsUpdater accountUpdater, JobLauncher jobLauncher, LockProvider lockProvider,
-            MetricsJobProperties properties, Clock clock, PlatformTransactionManager transactionManager) {
+            StatsChanges statsChanges, MetricsJobProperties properties, Clock clock,
+            PlatformTransactionManager transactionManager) {
         this.runRepository = runRepository;
         this.accountPostRepository = accountPostRepository;
         this.accountUpdater = accountUpdater;
         this.jobLauncher = jobLauncher;
         this.lockProvider = lockProvider;
+        this.statsChanges = statsChanges;
         this.properties = properties;
         this.clock = clock;
         this.transaction = new TransactionTemplate(transactionManager);
@@ -187,8 +191,13 @@ public class MetricUpdateService {
                 results.size(), failures.stream()
                         .map(failure -> failure.account() + " (" + failure.error() + ")")
                         .collect(Collectors.joining("; ")));
-        MetricUpdateRun finished = update(runId, run -> run.finish(now(), results.size(), failures.size(), snapshots,
-                summary));
+        MetricUpdateRun finished = update(runId, run -> {
+            run.finish(now(), results.size(), failures.size(), snapshots, summary);
+            if (snapshots > 0) {
+                // Sent after this transaction commits (METRICS_UPDATED).
+                statsChanges.metricsUpdated(runId, run.getStartedAt());
+            }
+        });
         log.info("Metrics job run {} {}: {} accounts, {} failed, {} snapshots", runId, finished.getStatus(),
                 results.size(), failures.size(), snapshots);
     }

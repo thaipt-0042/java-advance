@@ -67,6 +67,9 @@ class PostImportServiceTests {
     @Mock
     private PlatformTransactionManager transactionManager;
 
+    @Mock
+    private StatsChanges statsChanges;
+
     private ValidatorFactory validatorFactory;
     private PostImportService importService;
 
@@ -75,7 +78,7 @@ class PostImportServiceTests {
         validatorFactory = Validation.buildDefaultValidatorFactory();
         Clock clock = Clock.fixed(NOW, ZoneId.of("Asia/Ho_Chi_Minh"));
         importService = new PostImportService(new ExcelReader(validatorFactory.getValidator(), clock),
-                postRepository, bulkRepository, batchRepository, clock, transactionManager);
+                postRepository, bulkRepository, batchRepository, statsChanges, clock, transactionManager);
     }
 
     @AfterEach
@@ -165,6 +168,9 @@ class PostImportServiceTests {
         assertThat(result).extracting(ImportResultResponse::createdPosts, ImportResultResponse::updatedPosts,
                 ImportResultResponse::snapshotsCreated, ImportResultResponse::capturedAt)
                 .containsExactly(0, 1, 0, null);
+        // Post 1 changed account: its past days change too.
+        long batchId = savedBatch().getId();
+        verify(statsChanges).importCompleted(batchId, NOW_IN_DB, List.of(1L));
     }
 
     @Test

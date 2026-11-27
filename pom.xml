@@ -89,6 +89,12 @@
             <version>${poi.version}</version>
         </dependency>
 
+        <!-- JMS: statistics recomputed from a queue (Apache Artemis, formerly ActiveMQ Artemis) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-artemis</artifactId>
+        </dependency>
+
         <!-- Background job: one run at a time across instances (lock table in MySQL) -->
         <dependency>
             <groupId>net.javacrumbs.shedlock</groupId>
@@ -146,6 +152,16 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-artemis-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-activemq</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

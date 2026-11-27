@@ -2,6 +2,7 @@ package com.sunasterisk.socialanalytics.repository;
 
 import com.sunasterisk.socialanalytics.entity.SocialMetric;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
@@ -25,6 +26,14 @@ public interface SocialMetricRepository extends JpaRepository<SocialMetric, Long
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select m from SocialMetric m where m.id = :id")
     Optional<SocialMetric> findByIdForUpdate(@Param("id") Long id);
+
+    /**
+     * {@code captured_at} of the snapshot as stored (UTC wall-clock time), its row locked until the transaction ends
+     * (empty if it doesn't exist): read before deleting, so the statistics know which day changed, without loading
+     * the entity.
+     */
+    @Query(value = "select captured_at from social_metrics where id = :id for update", nativeQuery = true)
+    Optional<LocalDateTime> findCapturedAtForUpdate(@Param("id") Long id);
 
     /** Deletes without loading the snapshot first; returns the number of deleted rows (0 if it doesn't exist). */
     @Modifying

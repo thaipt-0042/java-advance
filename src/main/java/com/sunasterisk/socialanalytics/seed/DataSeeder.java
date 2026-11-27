@@ -5,6 +5,7 @@ import com.sunasterisk.socialanalytics.entity.SocialMetric;
 import com.sunasterisk.socialanalytics.entity.SocialPlatform;
 import com.sunasterisk.socialanalytics.repository.PostRepository;
 import com.sunasterisk.socialanalytics.repository.SocialMetricRepository;
+import com.sunasterisk.socialanalytics.service.StatsChanges;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -32,11 +33,14 @@ public class DataSeeder implements ApplicationRunner {
 
     private final PostRepository postRepository;
     private final SocialMetricRepository socialMetricRepository;
+    private final StatsChanges statsChanges;
     private final Clock clock;
 
-    public DataSeeder(PostRepository postRepository, SocialMetricRepository socialMetricRepository, Clock clock) {
+    public DataSeeder(PostRepository postRepository, SocialMetricRepository socialMetricRepository,
+            StatsChanges statsChanges, Clock clock) {
         this.postRepository = postRepository;
         this.socialMetricRepository = socialMetricRepository;
+        this.statsChanges = statsChanges;
         this.clock = clock;
     }
 
@@ -79,6 +83,8 @@ public class DataSeeder implements ApplicationRunner {
             }
         }
         socialMetricRepository.saveAll(metrics);
+        // The charts read the daily statistics: compute the seeded week once committed.
+        statsChanges.snapshotsChanged(now.minus(Duration.ofDays(DAYS_OF_METRICS - 1L)));
         log.info("Seeded {} posts and {} metric snapshots", samples.size(), metrics.size());
     }
 

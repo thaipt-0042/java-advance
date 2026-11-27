@@ -3,6 +3,7 @@ package com.sunasterisk.socialanalytics.service.metrics;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -20,6 +21,7 @@ import com.sunasterisk.socialanalytics.exception.ConflictException;
 import com.sunasterisk.socialanalytics.repository.AccountPostRepository;
 import com.sunasterisk.socialanalytics.repository.AccountPostRepository.Account;
 import com.sunasterisk.socialanalytics.repository.MetricUpdateRunRepository;
+import com.sunasterisk.socialanalytics.service.StatsChanges;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -50,6 +52,7 @@ class MetricUpdateServiceTests {
     private final AccountMetricsUpdater accountUpdater = mock(AccountMetricsUpdater.class);
     private final JobLauncher jobLauncher = mock(JobLauncher.class);
     private final LockProvider lockProvider = mock(LockProvider.class);
+    private final StatsChanges statsChanges = mock(StatsChanges.class);
     private final MetricUpdateService service = service(Duration.ofSeconds(5));
     private final MetricUpdateRun run = run(7L, RunTrigger.SCHEDULED);
 
@@ -67,6 +70,7 @@ class MetricUpdateServiceTests {
         assertThat(run.getAccountsFailed()).isZero();
         assertThat(run.getSnapshotsCreated()).isEqualTo(5);
         assertThat(run.getErrorMessage()).isNull();
+        verify(statsChanges).metricsUpdated(7L, NOW_MICROS);
     }
 
     @Test
@@ -101,6 +105,8 @@ class MetricUpdateServiceTests {
 
         assertThat(run.getStatus()).isEqualTo(RunStatus.SUCCEEDED);
         assertThat(run.getAccountsTotal()).isZero();
+        // No snapshot written: nothing to recompute.
+        verify(statsChanges, never()).metricsUpdated(anyLong(), any());
     }
 
     @Test
@@ -237,7 +243,7 @@ class MetricUpdateServiceTests {
         MetricsJobProperties properties = new MetricsJobProperties("-", new MetricsJobProperties.Pool(4, 4, 10),
                 accountTimeout, Duration.ofMinutes(10), new MetricsJobProperties.Mock(Duration.ZERO, 0));
         return new MetricUpdateService(runRepository, accountPostRepository, accountUpdater, jobLauncher,
-                lockProvider, properties, Clock.fixed(NOW, ZoneId.of("Asia/Ho_Chi_Minh")),
+                lockProvider, statsChanges, properties, Clock.fixed(NOW, ZoneId.of("Asia/Ho_Chi_Minh")),
                 mock(PlatformTransactionManager.class));
     }
 
