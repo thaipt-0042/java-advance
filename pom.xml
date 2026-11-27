@@ -20,6 +20,7 @@
         <java.version>21</java.version>
         <springdoc.version>3.2.0</springdoc.version>
         <jacoco.version>0.8.16</jacoco.version>
+        <excel-streaming-reader.version>6.0.0</excel-streaming-reader.version>
         <poi.version>6.0.0</poi.version>
         <shedlock.version>7.11.0</shedlock.version>
         <argLine/>
@@ -76,7 +77,12 @@
             <version>${springdoc.version}</version>
         </dependency>
 
-        <!-- Excel import / export (.xlsx) -->
+        <!-- Excel import / export (.xlsx); the import streams the sheet with excel-streaming-reader -->
+        <dependency>
+            <groupId>com.github.pjfanning</groupId>
+            <artifactId>excel-streaming-reader</artifactId>
+            <version>${excel-streaming-reader.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>

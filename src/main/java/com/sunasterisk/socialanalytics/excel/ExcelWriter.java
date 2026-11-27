@@ -30,7 +30,9 @@ import org.springframework.stereotype.Component;
  *   <li>Supported component types: {@code String}, {@code Long} / {@code Integer}, {@code Instant},
  *       {@code LocalDate} and enums. {@code null} leaves the cell empty.</li>
  *   <li>Text is always written as a text cell, never as a formula: a value such as {@code =HYPERLINK(...)} coming
- *       from user data is shown as is, not run by Excel.</li>
+ *       from user data is shown as is, not run by Excel. Text starting with a character Excel takes as the start
+ *       of a formula ({@code = + - @}, Tab, CR, LF) also gets the quote prefix, so it stays text after the
+ *       recipient edits the cell and presses Enter; the value of the cell doesn't change.</li>
  *   <li>An {@code Instant} becomes a date cell in the application time zone ({@link Clock}), the zone in which
  *       {@link ExcelReader} reads date cells, so an exported date imports back to the same instant (to the
  *       millisecond, Excel's precision).</li>
@@ -45,6 +47,9 @@ public class ExcelWriter {
 
     /** Rows kept in memory per sheet before the oldest are flushed to the temporary file. */
     private static final int ROWS_IN_MEMORY = 100;
+
+    /** First characters that make Excel read what is typed in a cell as a formula. */
+    private static final String FORMULA_STARTS = "=+-@\t\r\n";
 
     private static final int DEFAULT_WIDTH = 16;
     private static final int TEXT_WIDTH = 40;
@@ -111,7 +116,12 @@ public class ExcelWriter {
 
         private void write(Cell cell, Object value) {
             switch (value) {
-                case String text -> cell.setCellValue(text);
+                case String text -> {
+                    cell.setCellValue(text);
+                    if (!text.isEmpty() && FORMULA_STARTS.indexOf(text.charAt(0)) >= 0) {
+                        cell.setCellStyle(styles.quotedText());
+                    }
+                }
                 case Long number -> cell.setCellValue(number);
                 case Integer number -> cell.setCellValue(number);
                 case Instant instant -> {
@@ -128,7 +138,7 @@ public class ExcelWriter {
         }
     }
 
-    private record Styles(CellStyle header, CellStyle dateTime, CellStyle date) {
+    private record Styles(CellStyle header, CellStyle dateTime, CellStyle date, CellStyle quotedText) {
 
         static Styles of(SXSSFWorkbook workbook) {
             Font bold = workbook.createFont();
@@ -139,7 +149,9 @@ public class ExcelWriter {
             dateTime.setDataFormat(workbook.createDataFormat().getFormat("yyyy-mm-dd hh:mm:ss"));
             CellStyle date = workbook.createCellStyle();
             date.setDataFormat(workbook.createDataFormat().getFormat("yyyy-mm-dd"));
-            return new Styles(header, dateTime, date);
+            CellStyle quotedText = workbook.createCellStyle();
+            quotedText.setQuotePrefixed(true);
+            return new Styles(header, dateTime, date, quotedText);
         }
     }
 
