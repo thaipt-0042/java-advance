@@ -30,6 +30,11 @@ import java.util.Arrays;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.apache.poi.openxml4j.opc.OPCPackage;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.DateUtil;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.poifs.crypt.EncryptionInfo;
 import org.apache.poi.poifs.crypt.EncryptionMode;
 import org.apache.poi.poifs.crypt.Encryptor;
@@ -192,6 +197,80 @@ class ExcelReaderTests {
     }
 
     @Test
+    void readsDateCellsWithBuiltInFormatsAndThe1904DateSystem() throws IOException {
+        LocalDateTime tenAm = LocalDateTime.of(2026, 3, 1, 10, 0);
+        Instant expected = Instant.parse("2026-03-01T03:00:00Z");
+        // Built-in formats 14 (m/d/yy) and 22 (m/d/yy h:mm) have no format string in styles.xml.
+        for (short format : new short[] {14, 22}) {
+            ExcelSheet<PostImportRow> sheet = read(dateFile(tenAm, format, false));
+            assertThat(sheet.errors()).isEmpty();
+            Instant midnight = expected.minusSeconds(10 * 3600);
+            assertThat(sheet.rows()).singleElement().extracting(row -> row.value().publishedAt())
+                    .isEqualTo(format == 14 ? midnight.plusSeconds(10 * 3600) : expected);
+        }
+        // Old Mac workbooks count days from 1904: the same serial number is another date.
+        ExcelSheet<PostImportRow> sheet = read(dateFile(tenAm, (short) 22, true));
+        assertThat(sheet.rows()).singleElement().extracting(row -> row.value().publishedAt()).isEqualTo(expected);
+        // A negative serial number in a date cell is no date
+        assertThat(read(Xlsx.withRawValue(dateFile(tenAm, (short) 22, false), "F2", "-1")).errors())
+                .containsExactly(new RowError(2, "publishedAt", "Ngày giờ không hợp lệ"));
+    }
+
+    @Test
+    void readsCellsWithoutReferenceAttributes() {
+        // The r attribute of <row> and <c> is optional: position then follows the previous row / cell, so these
+        // rows have no gap (an empty text cell keeps its place).
+        byte[] file = Xlsx.editSheetXml(Xlsx.of(POST_HEADER,
+                        row("FACEBOOK", "a", "page"),
+                        row("FACEBOOK", "b", "page", "", "", "yesterday")),
+                xml -> xml.replaceAll(" r=\"[A-Z]*[0-9]+\"", ""));
+
+        ExcelSheet<PostImportRow> sheet = read(file);
+
+        assertThat(sheet.rows()).extracting(row -> row.value().externalId()).containsExactly("a");
+        assertThat(sheet.errors()).containsExactly(new RowError(3, "publishedAt",
+                "Ngày giờ không đúng định dạng (ví dụ 2026-03-01 10:00 hoặc 2026-03-01T03:00:00Z)"));
+    }
+
+    @Test
+    void readsInlineStringsAndStyledEmptyCellsAndRejectsUnknownCellContent() {
+        byte[] file = Xlsx.of(POST_HEADER, row("FACEBOOK", "a", "page"), row("FACEBOOK", "b", "page"));
+        // B2 as an inline string in two formatted runs, plus a phonetic run that isn't part of the text
+        file = Xlsx.editSheetXml(file, xml -> xml.replaceFirst("<c r=\"B2\"[^>]*>.*?</c>",
+                "<c r=\"B2\" t=\"inlineStr\"><is><r><t>id-</t></r><r><rPr><b/></rPr><t xml:space=\"preserve\">42 </t>"
+                        + "</r><rPh sb=\"0\" eb=\"1\"><t>ignored</t></rPh></is></c>"));
+        // B3 points at a shared string that doesn't exist; A3 has a cell type POI's writer never uses (ISO date)
+        file = Xlsx.withRawValue(file, "B3", "99999");
+        file = Xlsx.editSheetXml(file, xml -> xml.replaceFirst("<c r=\"A3\" t=\"s\"", "<c r=\"A3\" t=\"d\""));
+        // Styled empty cells, as Excel writes for formatted columns: skipped in the header, null in a row
+        file = Xlsx.editSheetXml(file, xml -> xml.replaceFirst("</row>", "<c r=\"K1\" s=\"0\"/></row>")
+                .replaceFirst("(<row r=\"2\"[^>]*>)", "$1<c r=\"D2\" s=\"0\"/>"));
+
+        ExcelSheet<PostImportRow> sheet = read(file);
+
+        assertThat(sheet.rows()).singleElement().satisfies(row -> {
+            assertThat(row.value().externalId()).isEqualTo("id-42");
+            assertThat(row.value().url()).isNull();
+        });
+        assertThat(sheet.errors()).containsExactly(
+                new RowError(3, "platform", "Không đọc được giá trị của ô"),
+                new RowError(3, "externalId", "Không đọc được giá trị của ô"));
+    }
+
+    @Test
+    void stopsReadingAtTheRowAfterTheLimit() {
+        // Everything after the 4th data row is broken XML: with a limit of 3 it is never parsed.
+        byte[] file = Xlsx.editSheetXml(Xlsx.posts("max", 5),
+                xml -> xml.replaceFirst("<row r=\"6\".*</sheetData>", "<row r=\"6\"><c r=\"A6\"><v>1</broken>"));
+
+        assertThatThrownBy(() -> reader.read(new ByteArrayInputStream(file), PostImportRow.class, 3))
+                .isInstanceOf(RowValidationException.class)
+                .hasMessage("File có hơn 3 dòng dữ liệu");
+        assertThatThrownBy(() -> reader.read(new ByteArrayInputStream(file), PostImportRow.class, 10))
+                .isInstanceOf(InvalidFileException.class);
+    }
+
+    @Test
     void reportsBeanValidationErrorsByColumnAndRowRulesWithoutColumn() {
         ExcelSheet<PostImportRow> sheet = read(Xlsx.of(POST_HEADER,
                 row("FACEBOOK", "a", "  ", "ftp://example.com", "x".repeat(5001)),
@@ -257,9 +336,12 @@ class ExcelReaderTests {
 
     @Test
     void rejectsZipBombWithoutInflatingIt() {
-        // 50MB of one character compresses to about 50KB: far beyond POI's maximum inflate ratio.
+        // 50MB of one character compresses to about 50KB: far beyond POI's maximum inflate ratio. It sits in an XML
+        // comment, so the streaming parser keeps reading until the zip bomb check stops it.
+        byte[] head = "<?xml version=\"1.0\"?><!--".getBytes(StandardCharsets.US_ASCII);
         byte[] bomb = new byte[50 * 1024 * 1024];
         Arrays.fill(bomb, (byte) 'a');
+        System.arraycopy(head, 0, bomb, 0, head.length);
         byte[] file = zipWithEntry("[Content_Types].xml", bomb);
         assertThat(file.length).isLessThan(100 * 1024);
 
@@ -289,7 +371,7 @@ class ExcelReaderTests {
     void rejectsMoreRowsThanAllowedBeforeConvertingThem() {
         assertThatThrownBy(() -> reader.read(new ByteArrayInputStream(Xlsx.posts("max", 4)), PostImportRow.class, 3))
                 .isInstanceOfSatisfying(RowValidationException.class, ex -> {
-                    assertThat(ex.getMessage()).isEqualTo("File có 4 dòng dữ liệu, tối đa 3 dòng");
+                    assertThat(ex.getMessage()).isEqualTo("File có hơn 3 dòng dữ liệu");
                     assertThat(ex.getErrors()).isEmpty();
                 });
         assertThat(reader.read(new ByteArrayInputStream(Xlsx.posts("max", 3)), PostImportRow.class, 3).rows())
@@ -311,6 +393,32 @@ class ExcelReaderTests {
                 .isInstanceOf(IllegalStateException.class).hasMessage("Duplicate @ExcelColumn \"A\" in Repeated");
         assertThatThrownBy(() -> reader.read(InputStream.nullInputStream(), Unsupported.class, 10))
                 .isInstanceOf(IllegalStateException.class).hasMessage("Unsupported.n: unsupported type Integer");
+    }
+
+    /** A file whose only post has publishedAt = {@code dateTime} as a date cell with a built-in format. */
+    private static byte[] dateFile(LocalDateTime dateTime, short builtInFormat, boolean date1904)
+            throws IOException {
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            if (date1904) {
+                workbook.getCTWorkbook().addNewWorkbookPr().setDate1904(true);
+            }
+            Sheet sheet = workbook.createSheet("posts");
+            Row header = sheet.createRow(0);
+            for (int c = 0; c < POST_HEADER.size(); c++) {
+                header.createCell(c).setCellValue(POST_HEADER.get(c));
+            }
+            Row row = sheet.createRow(1);
+            row.createCell(0).setCellValue("FACEBOOK");
+            row.createCell(1).setCellValue("dated");
+            row.createCell(2).setCellValue("page");
+            CellStyle style = workbook.createCellStyle();
+            style.setDataFormat(builtInFormat);
+            Cell published = row.createCell(5);
+            published.setCellValue(DateUtil.getExcelDate(dateTime, date1904));
+            published.setCellStyle(style);
+            workbook.write(out);
+            return out.toByteArray();
+        }
     }
 
     private static ExcelSheet<PostImportRow> read(byte[] file) {

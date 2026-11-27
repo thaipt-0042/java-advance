@@ -97,7 +97,7 @@ curl -F "file=@posts.xlsx" http://localhost:8080/api/v1/import-posts
 - **Bài đã có** (cùng `platform` + `externalId`, so như cột trong DB: không phân biệt hoa thường và dấu) thì **cập nhật** theo file. Chỉ cập nhật cột có trong file: file không có cột `content` thì giữ nguyên nội dung cũ; ô trống trong cột có mặt thì xóa giá trị cũ (giống PUT). Bài không có gì thay đổi thì không bị ghi lại và không tính vào `updatedPosts`.
 - Một bài xuất hiện hai lần trong cùng file là lỗi dòng.
 - Dòng có số liệu tạo thêm một snapshot. Mọi snapshot của một lần import có chung `capturedAt` là thời điểm import.
-- Giới hạn: file tối đa 5MB (lớn hơn thì 413), tối đa 5.000 dòng dữ liệu (422). File không phải `.xlsx` đọc được (kể cả `.xls`, file có mật khẩu), thiếu cột bắt buộc, không có dòng dữ liệu thì 400.
+- Giới hạn: file tối đa 5MB (lớn hơn thì 413), tối đa 5.000 dòng dữ liệu (422; đọc tới dòng thứ 5.001 thì dừng, không đọc hết file). File không phải `.xlsx` đọc được (kể cả `.xls`, file có mật khẩu), thiếu cột bắt buộc, không có dòng dữ liệu thì 400.
 - Mỗi lần import thành công ghi một dòng `import_batches`. Response: `{batchId, totalRows, createdPosts, updatedPosts, snapshotsCreated, capturedAt}`.
 
 ## Test

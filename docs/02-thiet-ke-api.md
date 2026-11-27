@@ -106,7 +106,7 @@ Theo cùng quy ước với phần đã làm: tiền tố `/api/v1`, DTO, lỗi 
 | Có dòng lỗi (không ghi gì, Q4) | 422 `VALIDATION` | `errors`: `[{row, column, message}]`, `row` là số dòng trong Excel |
 | Không phải file `.xlsx` đọc được, thiếu cột bắt buộc, sai tên cột | 400 `BAD_REQUEST` | |
 | File quá giới hạn (5MB) | 413 `CONTENT_TOO_LARGE` | tên status của Spring 7 cho 413 |
-| Quá số dòng cho phép (5.000) | 422 `VALIDATION` | `errors` rỗng, `detail` ghi số dòng |
+| Quá số dòng cho phép (5.000) | 422 `VALIDATION` | `errors` rỗng, `detail` ghi giới hạn (đọc tới dòng dữ liệu thứ 5.001 thì dừng, không đếm hết file) |
 | Một bài mới trong file vừa được request khác tạo, sau khi import đã kiểm tra | 409 `CONFLICT` | ràng buộc UNIQUE chặn, không ghi gì |
 
 Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform` thì phân biệt như API): `platform`, `externalId`, `accountName` bắt buộc; `url`, `content`, `publishedAt` tùy chọn; `likes`, `shares`, `comments`, `followers` tùy chọn nhưng có một thì phải có đủ cả bốn. Giới hạn độ dài giống DTO của `/posts`. Kiểm tra trùng `(platform, externalId)` trong cùng file.

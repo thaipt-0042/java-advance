@@ -81,12 +81,17 @@ public final class Xlsx {
 
     /** Rewrites {@code xl/worksheets/sheet1.xml}; every other entry is copied as is. */
     public static byte[] editSheetXml(byte[] xlsx, UnaryOperator<String> edit) {
+        return editEntry(xlsx, "xl/worksheets/sheet1.xml", edit);
+    }
+
+    /** Rewrites one entry of the package (e.g. {@code xl/workbook.xml}); every other entry is copied as is. */
+    public static byte[] editEntry(byte[] xlsx, String entryName, UnaryOperator<String> edit) {
         try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(xlsx));
              ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
             try (ZipOutputStream out = new ZipOutputStream(bytes)) {
                 for (ZipEntry entry = in.getNextEntry(); entry != null; entry = in.getNextEntry()) {
                     byte[] content = in.readAllBytes();
-                    if (entry.getName().equals("xl/worksheets/sheet1.xml")) {
+                    if (entry.getName().equals(entryName)) {
                         content = edit.apply(new String(content, StandardCharsets.UTF_8))
                                 .getBytes(StandardCharsets.UTF_8);
                     }
