@@ -262,10 +262,14 @@ class ExcelReaderTests {
     void rejectsSheetsTheLibraryCannotParse() {
         String notXlsx = "File không phải file Excel .xlsx đọc được";
         byte[] file = Xlsx.of(POST_HEADER, row("FACEBOOK", "a", "page"));
-        // A cell reference without a column, a row number that isn't one, a shared string that doesn't exist
+        // A cell reference without a column, a row number that isn't one, shared strings that don't exist
         assertInvalid(Xlsx.editSheetXml(file, xml -> xml.replace("r=\"B2\"", "r=\"2B\"")), notXlsx);
         assertInvalid(Xlsx.editSheetXml(file, xml -> xml.replace("<row r=\"2\"", "<row r=\"x\"")), notXlsx);
         assertInvalid(Xlsx.withRawValue(file, "B2", "99999"), notXlsx);
+        assertInvalid(Xlsx.withRawValue(file, "B2", "-1"), notXlsx);
+        // A merged range written backwards, after the data
+        assertInvalid(Xlsx.editSheetXml(file, xml -> xml.replace("</sheetData>",
+                "</sheetData><mergeCells count=\"1\"><mergeCell ref=\"B2:A1\"/></mergeCells>")), notXlsx);
     }
 
     @Test

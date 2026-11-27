@@ -146,10 +146,12 @@ public class ExcelReader {
     private static <R extends @Nullable Object> R parsing(Supplier<R> call) {
         try {
             return call.get();
-        } catch (ExcelRuntimeException | NumberFormatException | IllegalStateException ex) {
-            // ExcelRuntimeException: broken XML, a cell reference without a column (<c r="2B">). The library lets
-            // two errors through unwrapped: NumberFormatException for a row number that isn't one (<row r="x">)
-            // and IllegalStateException for a shared string index that isn't in the table.
+        } catch (RuntimeException ex) {
+            // Only library code runs here. Besides ExcelRuntimeException (broken XML, <c r="2B">) it lets through
+            // whatever its parsing throws: NumberFormatException (<row r="x">), IllegalStateException or
+            // IndexOutOfBoundsException (a shared string index past either end of the table),
+            // IllegalArgumentException (<mergeCell ref="B2:A1">)... The library wraps any RuntimeException the
+            // same way when it opens the file.
             throw notXlsx(ex);
         }
     }
