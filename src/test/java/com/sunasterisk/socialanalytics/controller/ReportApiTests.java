@@ -59,6 +59,8 @@ class ReportApiTests extends ApiTestBase {
                 .containsEntry("accountName", "page-" + t)
                 .containsEntry("content", "=1+1")
                 .containsEntry("likes", "30")
+                .containsEntry("shares", "2")
+                .containsEntry("comments", "3")
                 .containsEntry("followers", "100")
                 // 2026-03-03T03:00Z in Asia/Ho_Chi_Minh
                 .containsEntry("capturedAt", "2026-03-03 10:00:00");

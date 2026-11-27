@@ -121,7 +121,7 @@ Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform`
 `GET /api/v1/export-report?from=2026-11-01&to=2026-11-30&platform=FACEBOOK` (mọi tham số tùy chọn; `from`/`to` là ngày `publishedAt` theo giờ Việt Nam, bao gồm cả hai đầu, tối đa 366 ngày).
 
 - 200, `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `Content-Disposition: attachment; filename="social-report-2026-11-20.xlsx"` (ngày xuất theo giờ Việt Nam).
-- Nội dung đề xuất (Q11): sheet "Posts" (mỗi bài kèm snapshot mới nhất), sheet "Daily" (thống kê theo ngày).
+- Nội dung theo đề xuất (Q11, chưa chốt): sheet "Posts" (mỗi bài kèm snapshot mới nhất, #7), sheet "Daily" (thống kê theo ngày, thêm ở #12). #15 thêm cột chi phí quảng cáo quy ra VND và sheet tỷ giá (Q7).
 - `from` sau `to` hoặc khoảng quá dài: 422.
 
 ### Chạy job thủ công (#10, #11)
@@ -129,7 +129,7 @@ Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform`
 `POST /api/v1/jobs/update-metrics` (`ADMIN`, CSRF).
 
 - 202 `{runId}`: đã bắt đầu, chạy nền.
-- 409 `CONFLICT`: đang có lần chạy chưa xong (đề xuất, Q6).
+- 409 `CONFLICT`: đang có lần chạy chưa xong (đã chốt, Q6).
 
 `GET /api/v1/jobs/update-metrics/latest`: lần chạy gần nhất `{runId, status, triggerType, startedAt, finishedAt, accountsTotal, accountsFailed}` và `lastUpdatedAt` (lần `SUCCEEDED`/`PARTIAL` gần nhất); 200 kèm `null` các trường khi chưa chạy lần nào.
 
@@ -164,7 +164,7 @@ Cột (đã chốt, Q3; tên cột không phân biệt hoa thường, `platform`
 
 - Endpoint giả lập (Spring-WS) trong app: `/soap/*`, WSDL tại `/soap/exchange-rates.wsdl`, operation lấy tỷ giá theo cặp tiền và ngày. Dùng tiền tố `/soap` vì `/ws` đã dành cho WebSocket.
 - Client (`WebServiceTemplate`) đọc URL và timeout từ cấu hình. SOAP fault hoặc timeout khi dashboard cần tỷ giá thì dashboard hiện "không lấy được tỷ giá", không lỗi cả trang; nếu có API trả tỷ giá thì trả 502 `BAD_GATEWAY` cùng format lỗi.
-- Dùng kết quả ở đâu: đề xuất hiển thị trên dashboard (Q7).
+- Dùng kết quả ở đâu (đã chốt, Q7 = b + c): dashboard hiện tỷ giá USD → VND và tổng chi phí quảng cáo quy ra VND; file export thêm cột chi phí quy ra VND và sheet tỷ giá. Bài viết có thêm `adCost` (USD, tùy chọn) ở `/posts` và file import.
 
 ### Trang web (Thymeleaf, #9, #11, #14)
 
