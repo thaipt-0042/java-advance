@@ -2,9 +2,9 @@ package com.sunasterisk.socialanalytics.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.sunasterisk.socialanalytics.support.LoginSession;
 import com.sunasterisk.socialanalytics.support.TestcontainersConfiguration;
 import java.net.URI;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.UUID;
@@ -30,18 +30,16 @@ class ForwardedHeadersApiTests {
     @Test
     void locationUsesForwardedSchemeAndHost() throws Exception {
         String externalId = "fwd-" + UUID.randomUUID().toString().substring(0, 8);
-        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/v1/posts"))
-                .header("Content-Type", "application/json")
-                .header("X-Forwarded-Proto", "https")
-                .header("X-Forwarded-Host", "social.example.com")
-                .POST(HttpRequest.BodyPublishers.ofString("""
-                        {"platform": "FACEBOOK", "externalId": "%s", "accountName": "page"}
-                        """.formatted(externalId)))
-                .build();
-
         HttpResponse<String> response;
-        try (HttpClient client = HttpClient.newHttpClient()) {
-            response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        try (LoginSession admin = LoginSession.login(port, LoginSession.ADMIN, LoginSession.ADMIN_PASSWORD)) {
+            response = admin.send(admin.request("/api/v1/posts")
+                    .header("Content-Type", "application/json")
+                    .header("X-Forwarded-Proto", "https")
+                    .header("X-Forwarded-Host", "social.example.com")
+                    .POST(HttpRequest.BodyPublishers.ofString("""
+                            {"platform": "FACEBOOK", "externalId": "%s", "accountName": "page"}
+                            """.formatted(externalId)))
+                    .build());
         }
 
         assertThat(response.statusCode()).isEqualTo(201);

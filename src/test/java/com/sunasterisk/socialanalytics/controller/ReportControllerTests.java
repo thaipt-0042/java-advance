@@ -12,18 +12,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.sunasterisk.socialanalytics.excel.ExcelExport;
 import com.sunasterisk.socialanalytics.exception.UnprocessableException;
+import com.sunasterisk.socialanalytics.security.SecurityConfig;
 import com.sunasterisk.socialanalytics.service.ExportedReport;
 import com.sunasterisk.socialanalytics.service.ReportService;
+import com.sunasterisk.socialanalytics.support.AdminRequests;
 import java.io.IOException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 /** Web layer of the export with {@link ReportService} mocked; the file itself is covered by {@link ReportApiTests}. */
 @WebMvcTest(ReportController.class)
+@Import({SecurityConfig.class, AdminRequests.class})
 class ReportControllerTests {
 
     @Autowired

@@ -16,12 +16,15 @@ import com.sunasterisk.socialanalytics.dto.ImportResultResponse;
 import com.sunasterisk.socialanalytics.exception.InvalidFileException;
 import com.sunasterisk.socialanalytics.exception.RowError;
 import com.sunasterisk.socialanalytics.exception.RowValidationException;
+import com.sunasterisk.socialanalytics.security.SecurityConfig;
 import com.sunasterisk.socialanalytics.service.PostImportService;
+import com.sunasterisk.socialanalytics.support.AdminRequests;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -32,6 +35,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * {@link PostImportService} mocked. The full stack on MySQL is covered by {@link ImportApiTests}.
  */
 @WebMvcTest(ImportController.class)
+@Import({SecurityConfig.class, AdminRequests.class})
 class ImportControllerTests {
 
     private static final String XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";

@@ -15,6 +15,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.validation.ObjectError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
@@ -33,6 +36,9 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  *   <li>{@link UnprocessableException} (a valid request the app refuses, e.g. an export too large): 422
  *       {@code VALIDATION}, empty {@code errors}.</li>
  *   <li>{@link InvalidFileException}: 400 {@code BAD_REQUEST}.</li>
+ *   <li>Not logged in ({@link AuthenticationException}): 401 {@code UNAUTHORIZED}. Logged in without the role, or a
+ *       missing / wrong CSRF token ({@link AccessDeniedException}): 403 {@code FORBIDDEN}. Both are raised by the
+ *       security filters, which hand them to this class ({@code SecurityConfig}).</li>
  *   <li>{@link ResourceNotFoundException}: 404 {@code NOT_FOUND}.</li>
  *   <li>{@link ConflictException}, {@link DataIntegrityViolationException} and
  *       {@link PessimisticLockingFailureException} (deadlock, lock wait timeout): 409 {@code CONFLICT}.</li>
@@ -77,6 +83,19 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(InvalidFileException.class)
     ResponseEntity<Object> handleInvalidFile(InvalidFileException ex, WebRequest request) {
         return respond(ex, HttpStatus.BAD_REQUEST, "BAD_REQUEST", ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    ResponseEntity<Object> handleUnauthenticated(AuthenticationException ex, WebRequest request) {
+        return respond(ex, HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Cần đăng nhập", request);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    ResponseEntity<Object> handleAccessDenied(AccessDeniedException ex, WebRequest request) {
+        String detail = ex instanceof CsrfException
+                ? "Thiếu hoặc sai CSRF token: gửi lại giá trị cookie XSRF-TOKEN trong header X-XSRF-TOKEN"
+                : "Không có quyền thực hiện thao tác này";
+        return respond(ex, HttpStatus.FORBIDDEN, "FORBIDDEN", detail, request);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
