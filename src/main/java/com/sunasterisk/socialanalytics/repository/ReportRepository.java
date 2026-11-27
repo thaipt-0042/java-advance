@@ -1,6 +1,5 @@
 package com.sunasterisk.socialanalytics.repository;
 
-import com.sunasterisk.socialanalytics.dto.PostReportRow;
 import com.sunasterisk.socialanalytics.entity.SocialPlatform;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -65,7 +64,7 @@ public class ReportRepository {
                         order by p.id
                         """,
                 filter(platform, publishedFrom, publishedBefore).addValue("afterId", afterId).addValue("limit", limit),
-                (rs, rowNum) -> new ReportEntry(rs.getLong("id"), row(rs)));
+                (rs, rowNum) -> entry(rs));
     }
 
     private static final String FILTER = """
@@ -82,12 +81,12 @@ public class ReportRepository {
                 .addValue("publishedBefore", utc(publishedBefore));
     }
 
-    private static PostReportRow row(ResultSet rs) throws SQLException {
-        return new PostReportRow(SocialPlatform.valueOf(rs.getString("platform")), rs.getString("external_id"),
-                rs.getString("account_name"), rs.getString("url"), rs.getString("content"),
-                instant(rs, "published_at"), rs.getObject("likes", Long.class), rs.getObject("shares", Long.class),
-                rs.getObject("comments", Long.class), rs.getObject("followers", Long.class),
-                instant(rs, "captured_at"));
+    private static ReportEntry entry(ResultSet rs) throws SQLException {
+        return new ReportEntry(rs.getLong("id"), SocialPlatform.valueOf(rs.getString("platform")),
+                rs.getString("external_id"), rs.getString("account_name"), rs.getString("url"),
+                rs.getString("content"), instant(rs, "published_at"), rs.getObject("likes", Long.class),
+                rs.getObject("shares", Long.class), rs.getObject("comments", Long.class),
+                rs.getObject("followers", Long.class), instant(rs, "captured_at"));
     }
 
     /** DATETIME columns hold UTC wall-clock time (see {@code PostBulkRepository}). */
@@ -100,7 +99,12 @@ public class ReportRepository {
         return instant == null ? null : LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 
-    /** A report row and the id of its post (the keyset for the next page). */
-    public record ReportEntry(long postId, PostReportRow row) {
+    /**
+     * A post and its latest snapshot, as read: the metric columns are null when the post has none. The post id is
+     * the keyset for the next page.
+     */
+    public record ReportEntry(long postId, SocialPlatform platform, String externalId, String accountName,
+            @Nullable String url, @Nullable String content, @Nullable Instant publishedAt, @Nullable Long likes,
+            @Nullable Long shares, @Nullable Long comments, @Nullable Long followers, @Nullable Instant capturedAt) {
     }
 }

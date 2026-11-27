@@ -13,7 +13,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.sunasterisk.socialanalytics.dto.PostReportRow;
 import com.sunasterisk.socialanalytics.dto.ReportFilter;
 import com.sunasterisk.socialanalytics.entity.SocialPlatform;
 import com.sunasterisk.socialanalytics.excel.ExcelExport;
@@ -124,8 +123,8 @@ class ReportServiceTests {
     }
 
     private static ReportEntry entry(long id) {
-        return new ReportEntry(id, new PostReportRow(SocialPlatform.FACEBOOK, "ext-" + id, "page", null, null,
-                null, null, null, null, null, null));
+        return new ReportEntry(id, SocialPlatform.FACEBOOK, "ext-" + id, "page", null, null, null, null, null,
+                null, null, null);
     }
 
     private static List<ReportEntry> entries(long firstId, int count) {

@@ -17,7 +17,6 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
-import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
 /**
@@ -62,7 +61,6 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(new HeaderCsrfTokenRequestHandler()))
-                .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(problemEntryPoint)
                         .accessDeniedHandler(problemAccessDeniedHandler))
@@ -79,7 +77,6 @@ public class SecurityConfig {
                         .requestMatchers("/", "/dashboard").authenticated()
                         .anyRequest().denyAll())
                 .csrf(csrf -> csrf.spa())
-                .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
                 .logout(logout -> logout.logoutSuccessUrl("/login?logout"));
         if (demoLogin.enabled()) {
             // Spring Security's generated login page (with the CSRF field); not logged in → redirect to it. Setting

@@ -65,6 +65,19 @@ class LoginFlowApiTests {
     }
 
     @Test
+    void aWebRequestGivesBackALostCsrfCookie() throws Exception {
+        // A web path whose response doesn't use the token: the cookie is still written.
+        try (LoginSession admin = LoginSession.login(port, LoginSession.ADMIN, LoginSession.ADMIN_PASSWORD)) {
+            admin.forgetCsrfCookie();
+
+            assertThat(admin.send(admin.request("/actuator/health").GET().build()).statusCode()).isEqualTo(200);
+
+            assertThat(admin.csrfToken()).isNotBlank();
+            assertThat(admin.send(createPost(admin.request("/api/v1/posts"))).statusCode()).isEqualTo(201);
+        }
+    }
+
+    @Test
     void userLogsInAndCanReadButNotWrite() throws Exception {
         try (LoginSession user = LoginSession.login(port, LoginSession.USER, LoginSession.USER_PASSWORD)) {
             assertThat(user.send(user.request("/api/v1/posts").GET().build()).statusCode()).isEqualTo(200);
