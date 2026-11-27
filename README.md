@@ -25,7 +25,7 @@ src/main/java/com/sunasterisk/socialanalytics
 ├── repository/    # Spring Data JPA repositories
 ├── dto/           # request/response DTO
 ├── entity/        # JPA entities
-├── excel/         # đọc file Excel vào record bằng Reflection (@ExcelColumn)
+├── excel/         # đọc / ghi file Excel từ record bằng Reflection (@ExcelColumn)
 ├── exception/     # exception của app + GlobalExceptionHandler (format lỗi chung)
 ├── seed/          # dữ liệu mẫu cho profile dev
 └── util/          # helper
@@ -57,7 +57,7 @@ docker compose up -d
 - Health: http://localhost:8080/actuator/health
 - Swagger UI (chỉ profile `dev`): http://localhost:8080/swagger-ui.html
 - OpenAPI JSON (chỉ profile `dev`): http://localhost:8080/v3/api-docs
-- API: `/api/v1/posts`, `/api/v1/metrics` (xem `docs/02-thiet-ke-api.md`), `/api/v1/import-posts` (xem dưới)
+- API: `/api/v1/posts`, `/api/v1/metrics` (xem `docs/02-thiet-ke-api.md`), `/api/v1/import-posts`, `/api/v1/export-report` (xem dưới)
 
 ### Profile
 
@@ -100,6 +100,20 @@ curl -F "file=@posts.xlsx" http://localhost:8080/api/v1/import-posts
 - Giới hạn: file tối đa 5MB (lớn hơn thì 413), tối đa 5.000 dòng dữ liệu (422; đọc tới dòng thứ 5.001 thì dừng, không đọc hết file). File không phải `.xlsx` đọc được (kể cả `.xls`, file có mật khẩu), thiếu cột bắt buộc, không có dòng dữ liệu thì 400.
 - Mỗi lần import thành công ghi một dòng `import_batches`. Response: `{batchId, totalRows, createdPosts, updatedPosts, snapshotsCreated, capturedAt}`.
 
+## Xuất báo cáo Excel
+
+`GET /api/v1/export-report`, trả file `social-report-<ngày xuất>.xlsx`:
+
+```bash
+curl -OJ "http://localhost:8080/api/v1/export-report?from=2026-11-01&to=2026-11-30&platform=FACEBOOK"
+```
+
+- Tham số đều tùy chọn: `from` / `to` là ngày đăng bài (`publishedAt`) theo giờ `APP_TIME_ZONE`, bao gồm cả hai đầu, tối đa 366 ngày; `platform` là `FACEBOOK` hoặc `TWITTER`. Có `from` hoặc `to` thì bài không có ngày đăng bị bỏ.
+- Sheet `Posts`: mỗi bài một dòng, theo thứ tự tạo, kèm **snapshot mới nhất** (`likes`, `shares`, `comments`, `followers`, `capturedAt`; trống nếu bài chưa có snapshot). Thời gian là ô ngày giờ theo giờ `APP_TIME_ZONE`. Tên cột giống file import, thêm `capturedAt`.
+- Sheet thống kê theo ngày sẽ thêm ở #12 (`docs/cau-hoi-lam-ro.md` Q11).
+- Tối đa 100.000 bài mỗi file (422, hãy thu hẹp bộ lọc). File được tạo bằng `SXSSFWorkbook`: chỉ giữ 100 dòng mỗi sheet trong bộ nhớ, phần còn lại ghi ra file tạm (nén) và được xóa sau khi gửi.
+- Nội dung bài được ghi dạng text, kể cả khi bắt đầu bằng `=`: Excel không chạy nó như công thức.
+
 ## Test
 
 ```bash
@@ -113,7 +127,7 @@ curl -F "file=@posts.xlsx" http://localhost:8080/api/v1/import-posts
 | Test controller | `controller/*ControllerTests` | `@WebMvcTest` + MockMvc, service là `@MockitoBean`: binding tham số, validation, status, format lỗi |
 | Test repository | `repository/*RepositoryTests` | `@DataJpaTest` trên MySQL thật, mỗi test rollback: query tự viết, ràng buộc của schema |
 | Test API đầy đủ | `controller/*ApiTests` | `@SpringBootTest` + MockMvc trên MySQL thật, không rollback (mỗi request commit như production); gồm cả test hai request chen nhau |
-| Đọc Excel | `excel/ExcelReaderTests` | Unit test, file `.xlsx` tạo trong bộ nhớ bằng `support/Xlsx` (không commit file nhị phân) |
+| Đọc / ghi Excel | `excel/ExcelReaderTests`, `ExcelWriterTests` | Unit test, file `.xlsx` tạo và đọc lại trong bộ nhớ (`support/Xlsx`, không commit file nhị phân) |
 | Server thật | `controller/ForwardedHeadersApiTests`, `ImportUploadLimitApiTests` | `RANDOM_PORT` + `java.net.http`: những gì Tomcat làm mà MockMvc bỏ qua (header proxy, giới hạn upload) |
 
 Test dùng DB chạy trên MySQL 8.4 thật qua Testcontainers nên cần Docker đang chạy (không cần `docker compose up`). Một container dùng chung cho cả lượt test. JaCoCo chỉ báo cáo, chưa đặt ngưỡng coverage tối thiểu.

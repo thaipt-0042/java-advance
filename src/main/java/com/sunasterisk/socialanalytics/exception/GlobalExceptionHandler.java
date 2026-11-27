@@ -30,6 +30,8 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  *   <li>Bean Validation failures: 422 {@code VALIDATION}, {@code errors} as {@code [{field, message}]}.</li>
  *   <li>{@link RowValidationException} (rows of an uploaded file): 422 {@code VALIDATION}, {@code errors} as
  *       {@code [{row, column, message}]}.</li>
+ *   <li>{@link UnprocessableException} (a valid request the app refuses, e.g. an export too large): 422
+ *       {@code VALIDATION}, empty {@code errors}.</li>
  *   <li>{@link InvalidFileException}: 400 {@code BAD_REQUEST}.</li>
  *   <li>{@link ResourceNotFoundException}: 404 {@code NOT_FOUND}.</li>
  *   <li>{@link ConflictException}, {@link DataIntegrityViolationException} and
@@ -62,6 +64,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     ResponseEntity<Object> handleRowValidation(RowValidationException ex, WebRequest request) {
         ProblemDetail body = problem(HttpStatus.UNPROCESSABLE_CONTENT, "VALIDATION", ex.getMessage());
         body.setProperty("errors", ex.getErrors());
+        return handleExceptionInternal(ex, body, new HttpHeaders(), HttpStatus.UNPROCESSABLE_CONTENT, request);
+    }
+
+    @ExceptionHandler(UnprocessableException.class)
+    ResponseEntity<Object> handleUnprocessable(UnprocessableException ex, WebRequest request) {
+        ProblemDetail body = problem(HttpStatus.UNPROCESSABLE_CONTENT, "VALIDATION", ex.getMessage());
+        body.setProperty("errors", List.of());
         return handleExceptionInternal(ex, body, new HttpHeaders(), HttpStatus.UNPROCESSABLE_CONTENT, request);
     }
 
