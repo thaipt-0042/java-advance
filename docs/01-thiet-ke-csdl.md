@@ -120,6 +120,7 @@ Phần này là **thiết kế, chưa có migration**. Số version (`V2`, `V3`,
 | `metric_update_runs` | #10 | Background Job: "Thêm màn hình Last updated time" | Lưu thời điểm và trạng thái từng lần chạy job (kể cả lần lỗi); `MAX(captured_at)` không cho biết lần chạy gần nhất có lỗi hay không |
 | `shedlock` | #10 | Background Job: "Job chạy mỗi 1 giờ" | Khóa chống chạy chồng job dùng chung giữa các instance (ShedLock); cờ trong bộ nhớ chỉ chặn trong một instance |
 | `daily_platform_stats` | #12 | JMS: "Listener nhận message → cập nhật thống kê tổng hợp"; WebSocket: "`/chart-data` trả dữ liệu tổng hợp" | Đề yêu cầu cập nhật thống kê tổng hợp bất đồng bộ, nên cần nơi lưu kết quả tổng hợp; biểu đồ đọc bảng nhỏ này thay vì quét toàn bộ snapshot |
+| cột `posts.ad_cost` | #15 | Spring WebService: tỷ giá dùng để quy đổi chi phí quảng cáo (Q7) | Không phải bảng mới: DECIMAL(15,2) USD, NULL, CHECK `>= 0`; quy ra VND lúc hiển thị/xuất, không lưu số đã quy đổi |
 
 Không thêm bảng cho: tài khoản mạng xã hội được theo dõi (`social_accounts`, xem quyết định 2 ở trên: chỉ tách khi cần lịch sử follower độc lập với bài viết), tỷ giá SOAP (gọi khi cần, cache trong bộ nhớ).
 
@@ -182,7 +183,7 @@ erDiagram
 | `created_at` | TIMESTAMP, mặc định thời điểm insert | |
 
 - **Đề yêu cầu** lưu token truy cập. **Đề xuất**: token không bao giờ được log, không trả ra API, không đưa vào export.
-- Token lưu dạng rõ trong DB (mặc định của Spring Security). Có mã hóa khi lưu hay không là câu hỏi Q8.
+- Token được mã hóa AES-GCM trước khi ghi vào `access_token_value` / `refresh_token_value` (đã chốt, Q8), khóa đọc từ `APP_TOKEN_ENCRYPTION_KEY`. Cột vẫn là BLOB nên schema không đổi.
 - Liên kết với `users`: `principal_name` = `users.provider_user_id`, `client_registration_id` = `users.provider` viết thường. Không đặt FK vì Spring Security tự insert/xóa bảng này.
 - Cột `TIMESTAMP` ở bảng này là theo schema chuẩn (giới hạn năm 2038 của MySQL `TIMESTAMP` không ảnh hưởng vì token sống ngắn); các bảng của app vẫn dùng `DATETIME(6)` UTC.
 
