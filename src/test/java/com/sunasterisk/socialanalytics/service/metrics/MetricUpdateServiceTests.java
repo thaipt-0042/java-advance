@@ -22,6 +22,7 @@ import com.sunasterisk.socialanalytics.repository.AccountPostRepository;
 import com.sunasterisk.socialanalytics.repository.AccountPostRepository.Account;
 import com.sunasterisk.socialanalytics.repository.MetricUpdateRunRepository;
 import com.sunasterisk.socialanalytics.service.StatsChanges;
+import com.sunasterisk.socialanalytics.websocket.DashboardEvent;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -35,6 +36,7 @@ import net.javacrumbs.shedlock.core.SimpleLock;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -53,6 +55,7 @@ class MetricUpdateServiceTests {
     private final JobLauncher jobLauncher = mock(JobLauncher.class);
     private final LockProvider lockProvider = mock(LockProvider.class);
     private final StatsChanges statsChanges = mock(StatsChanges.class);
+    private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final MetricUpdateService service = service(Duration.ofSeconds(5));
     private final MetricUpdateRun run = run(7L, RunTrigger.SCHEDULED);
 
@@ -71,6 +74,7 @@ class MetricUpdateServiceTests {
         assertThat(run.getSnapshotsCreated()).isEqualTo(5);
         assertThat(run.getErrorMessage()).isNull();
         verify(statsChanges).metricsUpdated(7L, NOW_MICROS);
+        verify(events).publishEvent(new DashboardEvent.JobFinished(NOW_MICROS, 7L, RunStatus.SUCCEEDED, NOW_MICROS));
     }
 
     @Test
@@ -157,6 +161,7 @@ class MetricUpdateServiceTests {
 
         assertThat(run.getStatus()).isEqualTo(RunStatus.FAILED);
         assertThat(run.getErrorMessage()).isEqualTo("Lỗi không mong đợi: db down");
+        verify(events).publishEvent(new DashboardEvent.JobFinished(NOW_MICROS, 7L, RunStatus.FAILED, NOW_MICROS));
     }
 
     @Test
@@ -248,7 +253,7 @@ class MetricUpdateServiceTests {
         MetricsJobProperties properties = new MetricsJobProperties("-", new MetricsJobProperties.Pool(4, 4, 10),
                 accountTimeout, Duration.ofMinutes(10), new MetricsJobProperties.Mock(Duration.ZERO, 0));
         return new MetricUpdateService(runRepository, accountPostRepository, accountUpdater, jobLauncher,
-                lockProvider, statsChanges, properties, Clock.fixed(NOW, ZoneId.of("Asia/Ho_Chi_Minh")),
+                lockProvider, statsChanges, events, properties, Clock.fixed(NOW, ZoneId.of("Asia/Ho_Chi_Minh")),
                 mock(PlatformTransactionManager.class));
     }
 

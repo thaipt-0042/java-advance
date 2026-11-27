@@ -13,6 +13,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * A browser-like session against a real server ({@code RANDOM_PORT} tests): logs in through the demo form login
@@ -72,6 +73,13 @@ public final class LoginSession implements AutoCloseable {
 
     public HttpResponse<String> send(HttpRequest request) throws IOException, InterruptedException {
         return client.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    /** Every cookie of this session as a {@code Cookie} header value ({@code a=1; b=2}). */
+    public String cookieHeader() {
+        return cookies.getCookieStore().getCookies().stream()
+                .map(cookie -> cookie.getName() + "=" + cookie.getValue())
+                .collect(Collectors.joining("; "));
     }
 
     /** Value of a cookie of this session, or null. */

@@ -35,7 +35,8 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
  *       {@code ADMIN} ({@code docs/cau-hoi-lam-ro.md} Q1). 401 / 403 are JSON in the common error format, never a
  *       redirect.</li>
  *   <li><b>Web</b> (every other path): the login page, static files, health and Swagger are public; the dashboard
- *       needs a login, its "run the job now" button {@code ADMIN}; <b>any other path is denied</b>, so a path nobody declared is never open by accident.
+ *       and the WebSocket endpoint need a login, its "run the job now" button {@code ADMIN}; <b>any other path is
+ *       denied</b>, so a path nobody declared is never open by accident.
  *       Not logged in: redirect to {@code /login}, which offers the configured Facebook / X logins and, in dev, the
  *       demo form (#9).</li>
  * </ul>
@@ -89,9 +90,13 @@ public class SecurityConfig {
         http.authorizeHttpRequests(requests -> requests
                         .requestMatchers(PUBLIC_WEB_PATHS).permitAll()
                         .requestMatchers(HttpMethod.POST, "/dashboard/update-metrics").hasRole("ADMIN")
-                        .requestMatchers("/", "/dashboard").authenticated()
+                        .requestMatchers("/", "/dashboard", "/ws/**").authenticated()
                         .anyRequest().denyAll())
-                .csrf(csrf -> csrf.spa())
+                // SockJS can't add the CSRF header to its XHR / iframe posts: no HTTP-level check for /ws/** only;
+                // the STOMP CONNECT frame carries the token instead (WebSocketSecurityConfig).
+                .csrf(csrf -> csrf.spa().ignoringRequestMatchers("/ws/**"))
+                // SockJS's iframe transport loads a page of this origin in a frame.
+                .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
                 .logout(logout -> logout.logoutSuccessUrl("/login?logout"))
                 // Our own /login page (provider buttons, and the demo form when on): not logged in → redirect there,
                 // even when no login method is configured (the page then says so).

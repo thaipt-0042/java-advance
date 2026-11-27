@@ -70,7 +70,7 @@ docker compose up -d
 - Health: http://localhost:8080/actuator/health
 - Swagger UI (chỉ profile `dev`): http://localhost:8080/swagger-ui.html
 - OpenAPI JSON (chỉ profile `dev`): http://localhost:8080/v3/api-docs
-- API: `/api/v1/posts`, `/api/v1/metrics` (xem `docs/02-thiet-ke-api.md`), `/api/v1/import-posts`, `/api/v1/export-report`, `/api/v1/jobs/update-metrics` (xem dưới)
+- API: `/api/v1/posts`, `/api/v1/metrics` (xem `docs/02-thiet-ke-api.md`), `/api/v1/import-posts`, `/api/v1/export-report`, `/api/v1/jobs/update-metrics`, `/api/v1/chart-data` (xem dưới)
 
 ### Profile
 
@@ -195,6 +195,13 @@ Bảng được tính lại qua queue `analytics.stats-refresh` trên Apache Art
 - Import xong thì `import_batches.stats_refreshed_at` được điền khi thống kê đã tính lại.
 - File export có thêm sheet `Daily` (thống kê các ngày trong `from`..`to`).
 
+## Biểu đồ và WebSocket
+
+- `GET /api/v1/chart-data?from=&to=&platform=`: thống kê theo ngày cho biểu đồ, mặc định 7 ngày gần nhất, tối đa 366 ngày. Mỗi mảng (`postsTracked`, `postsMeasured`, `likes`, `shares`, `comments`, `followers`) dài bằng `dates`. Ngày không có dữ liệu giữ số của ngày gần nhất trước đó với `postsMeasured` = 0; trước lần đo đầu tiên thì là 0 (`docs/cau-hoi-lam-ro.md` Q12). Kèm `lastUpdatedAt`.
+- WebSocket (STOMP qua SockJS) ở `/ws`, topic `/topic/metrics`. Sau khi thống kê được tính lại thì gửi `STATS_UPDATED {fromDate, toDate}`, sau mỗi lần chạy job thì gửi `JOB_FINISHED {runId, status, finishedAt}`. Event không chứa số liệu: trang gọi lại `/api/v1/chart-data`.
+- Chỉ người đã đăng nhập mới kết nối được. Frame `CONNECT` phải kèm CSRF token (dạng đã mask, lấy từ thẻ meta `_csrf` của dashboard) trong header `X-XSRF-TOKEN`. Chỉ được subscribe `/topic/metrics`. Tầng HTTP không kiểm CSRF riêng cho `/ws/**`, vì SockJS không gắn được header vào các request XHR / iframe khi WebSocket bị chặn.
+- Giới hạn: broker STOMP nằm trong bộ nhớ của từng instance. Event chỉ tới trình duyệt nối vào instance đã phát ra nó: `STATS_UPDATED` do instance đang giữ queue thống kê phát, `JOB_FINISHED` do instance đã chạy job phát.
+
 ## Test
 
 ```bash
@@ -212,6 +219,7 @@ Bảng được tính lại qua queue `analytics.stats-refresh` trên Apache Art
 | Job | `service/metrics/*Tests`, `client/MockSocialMetricsClientTests`, `controller/JobApiTests` | Service với Mockito (tài khoản lỗi, quá thời gian, hàng đợi đầy, khóa đang bị giữ); updater và API trên MySQL thật (bài bị xóa giữa chừng, lần chạy bỏ dở, lịch chạy bỏ lượt khi bị khóa) |
 | Trang web | `web/DashboardControllerTests`, `security/LoginFlowApiTests` | `@WebMvcTest` với template và security thật (giờ Việt Nam, nút chỉ cho `ADMIN`, trang lỗi); server thật: đăng nhập rồi bấm nút với `_csrf` của form |
 | JMS và thống kê | `messaging/*Tests`, `repository/DailyStatsRepositoryTests`, `service/Stats*Tests` | Broker thật (Testcontainers): chỉ gửi sau commit, rollback thì không gửi, message lỗi 4 lần vào DLQ; truy vấn thống kê với ví dụ Q12 trên MySQL |
+| WebSocket | `websocket/WebSocketApiTests` | Server thật, client STOMP qua SockJS với cookie đăng nhập và token từ thẻ meta, cả transport WebSocket lẫn chỉ XHR: nhận event; thiếu token, chưa đăng nhập, subscribe topic khác thì bị từ chối |
 | Quyền truy cập | `security/SecurityConfigTests`, `DemoLoginDisabledTests`, `OAuth2LoginTests`, `EncryptedTokensTests` | `@WebMvcTest` với cấu hình security thật: 401/403, CSRF, đường dẫn không khai báo, đăng nhập demo |
 | Server thật | `controller/ForwardedHeadersApiTests`, `ImportUploadLimitApiTests`, `security/LoginFlowApiTests` | `RANDOM_PORT` + `java.net.http` (`support/LoginSession` đăng nhập như trình duyệt): những gì Tomcat làm mà MockMvc bỏ qua (header proxy, giới hạn upload, cookie CSRF) |
 

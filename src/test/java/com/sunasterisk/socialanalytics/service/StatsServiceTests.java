@@ -10,12 +10,14 @@ import static org.mockito.Mockito.verify;
 
 import com.sunasterisk.socialanalytics.messaging.StatsRefreshMessage;
 import com.sunasterisk.socialanalytics.repository.DailyStatsRepository;
+import com.sunasterisk.socialanalytics.websocket.DashboardEvent;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
@@ -26,7 +28,8 @@ class StatsServiceTests {
 
     private final DailyStatsRepository repository = mock(DailyStatsRepository.class);
     private final NamedParameterJdbcTemplate jdbc = mock(NamedParameterJdbcTemplate.class);
-    private final StatsService service = new StatsService(repository, jdbc,
+    private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
+    private final StatsService service = new StatsService(repository, jdbc, events,
             Clock.fixed(NOW, ZoneId.of("Asia/Ho_Chi_Minh")));
 
     @Test
@@ -39,6 +42,8 @@ class StatsServiceTests {
         verify(repository).recompute(LocalDate.of(2026, 3, 3), Instant.parse("2026-03-02T17:00:00Z"),
                 Instant.parse("2026-03-03T17:00:00Z"), NOW);
         verify(jdbc, never()).update(anyString(), any(MapSqlParameterSource.class));
+        verify(events).publishEvent(new DashboardEvent.StatsUpdated(NOW, LocalDate.of(2026, 3, 1),
+                LocalDate.of(2026, 3, 3)));
     }
 
     @Test
