@@ -83,7 +83,7 @@ class SecurityConfigTests {
     @Test
     void adminCanWriteWithTheCsrfHeader() throws Exception {
         when(postService.create(any())).thenReturn(new PostResponse(1L, SocialPlatform.FACEBOOK, "1", "page", null,
-                null, null, Instant.parse("2026-03-01T03:00:00Z"), Instant.parse("2026-03-01T03:00:00Z")));
+                null, null, null, Instant.parse("2026-03-01T03:00:00Z"), Instant.parse("2026-03-01T03:00:00Z")));
 
         mockMvc.perform(post("/api/v1/posts").with(user("boss").roles("ADMIN")).with(csrf().asHeader())
                         .contentType(MediaType.APPLICATION_JSON).content(CREATE_POST))

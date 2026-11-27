@@ -2,9 +2,12 @@ package com.sunasterisk.socialanalytics.dto;
 
 import com.sunasterisk.socialanalytics.entity.Post;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.time.Instant;
 import org.hibernate.validator.constraints.URL;
 
@@ -18,6 +21,10 @@ public record PostUpdateRequest(
         @Size(max = Post.URL_MAX_LENGTH) @URL(regexp = Post.URL_PATTERN) String url,
         @Size(max = Post.CONTENT_MAX_LENGTH) String content,
         Instant publishedAt,
+        @Schema(description = "Chi phí quảng cáo (USD); để trống thì xóa giá trị cũ, như các trường khác của PUT",
+                example = "12.50")
+        @PositiveOrZero @Digits(integer = Post.AD_COST_PRECISION - Post.AD_COST_SCALE, fraction = Post.AD_COST_SCALE)
+        BigDecimal adCost,
         @Schema(description = "updatedAt của bài viết lúc client đọc", example = "2026-03-01T03:00:00.123456Z")
         @NotNull Instant updatedAt) {
 }

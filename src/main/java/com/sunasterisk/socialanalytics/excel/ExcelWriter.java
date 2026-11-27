@@ -3,6 +3,7 @@ package com.sunasterisk.socialanalytics.excel;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -27,8 +28,8 @@ import org.springframework.stereotype.Component;
  * values are read by reflection through the record accessors.
  *
  * <ul>
- *   <li>Supported component types: {@code String}, {@code Long} / {@code Integer}, {@code Instant},
- *       {@code LocalDate} and enums. {@code null} leaves the cell empty.</li>
+ *   <li>Supported component types: {@code String}, {@code Long} / {@code Integer}, {@code BigDecimal} (format
+ *       {@code #,##0.00}), {@code Instant}, {@code LocalDate} and enums. {@code null} leaves the cell empty.</li>
  *   <li>Text is always written as a text cell, never as a formula: a value such as {@code =HYPERLINK(...)} coming
  *       from user data is shown as is, not run by Excel. Text starting with a character Excel takes as the start
  *       of a formula ({@code = + - @}, Tab, CR, LF) also gets the quote prefix, so it stays text after the
@@ -124,6 +125,10 @@ public class ExcelWriter {
                 }
                 case Long number -> cell.setCellValue(number);
                 case Integer number -> cell.setCellValue(number);
+                case BigDecimal number -> {
+                    cell.setCellValue(number.doubleValue());
+                    cell.setCellStyle(styles.decimal());
+                }
                 case Instant instant -> {
                     cell.setCellValue(LocalDateTime.ofInstant(instant, zone));
                     cell.setCellStyle(styles.dateTime());
@@ -138,7 +143,8 @@ public class ExcelWriter {
         }
     }
 
-    private record Styles(CellStyle header, CellStyle dateTime, CellStyle date, CellStyle quotedText) {
+    private record Styles(CellStyle header, CellStyle dateTime, CellStyle date, CellStyle quotedText,
+            CellStyle decimal) {
 
         static Styles of(SXSSFWorkbook workbook) {
             Font bold = workbook.createFont();
@@ -151,7 +157,9 @@ public class ExcelWriter {
             date.setDataFormat(workbook.createDataFormat().getFormat("yyyy-mm-dd"));
             CellStyle quotedText = workbook.createCellStyle();
             quotedText.setQuotePrefixed(true);
-            return new Styles(header, dateTime, date, quotedText);
+            CellStyle decimal = workbook.createCellStyle();
+            decimal.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00"));
+            return new Styles(header, dateTime, date, quotedText, decimal);
         }
     }
 
@@ -189,7 +197,8 @@ public class ExcelWriter {
         }
 
         private static boolean isSupported(Class<?> type) {
-            return Arrays.asList(String.class, Long.class, Integer.class, Instant.class, LocalDate.class)
+            return Arrays.asList(String.class, Long.class, Integer.class, BigDecimal.class, Instant.class,
+                            LocalDate.class)
                     .contains(type) || type.isEnum();
         }
 

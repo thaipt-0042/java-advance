@@ -4,10 +4,12 @@ import com.sunasterisk.socialanalytics.entity.Post;
 import com.sunasterisk.socialanalytics.entity.SocialPlatform;
 import com.sunasterisk.socialanalytics.excel.ExcelColumn;
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -26,6 +28,9 @@ public record PostImportRow(
         @ExcelColumn(name = "url") @Size(max = Post.URL_MAX_LENGTH) @URL(regexp = Post.URL_PATTERN) String url,
         @ExcelColumn(name = "content") @Size(max = Post.CONTENT_MAX_LENGTH) String content,
         @ExcelColumn(name = "publishedAt") Instant publishedAt,
+        @ExcelColumn(name = "adCost") @PositiveOrZero
+        @Digits(integer = Post.AD_COST_PRECISION - Post.AD_COST_SCALE, fraction = Post.AD_COST_SCALE)
+        BigDecimal adCost,
         @ExcelColumn(name = "likes") @PositiveOrZero Long likes,
         @ExcelColumn(name = "shares") @PositiveOrZero Long shares,
         @ExcelColumn(name = "comments") @PositiveOrZero Long comments,

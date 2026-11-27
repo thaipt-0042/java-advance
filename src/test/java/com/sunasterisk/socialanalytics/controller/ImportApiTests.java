@@ -3,6 +3,7 @@ package com.sunasterisk.socialanalytics.controller;
 import static com.sunasterisk.socialanalytics.support.Xlsx.POST_HEADER;
 import static com.sunasterisk.socialanalytics.support.Xlsx.row;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oauth2Login;
@@ -23,7 +24,9 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -153,6 +156,47 @@ class ImportApiTests extends ApiTestBase {
                 .andExpect(jsonPath("$.content").value("hello"));
         mockMvc.perform(get("/api/v1/metrics").param("postId", String.valueOf(facebookId)))
                 .andExpect(jsonPath("$.content[*].likes").value(contains(20, 10)));
+    }
+
+    @Test
+    void importsTheAdCostAndAReimportWithTheColumnReplacesItWithoutItKeepsIt() throws Exception {
+        String t = token();
+        importFile(t + ".xlsx", Xlsx.of(row("platform", "externalId", "accountName", "adCost"),
+                        row("FACEBOOK", t + "-1", "page-" + t, 12.5),
+                        row("FACEBOOK", t + "-2", "page-" + t, "7.25")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.createdPosts").value(2));
+        assertThat(adCosts(t)).containsExactly(entry(t + "-1", "12.50"), entry(t + "-2", "7.25"));
+
+        // 12.5 is the stored 12.50: no change. An empty cell clears the cost.
+        importFile(t + ".xlsx", Xlsx.of(row("platform", "externalId", "accountName", "adCost"),
+                        row("FACEBOOK", t + "-1", "page-" + t, 12.5),
+                        row("FACEBOOK", t + "-2", "page-" + t, null)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updatedPosts").value(1));
+        assertThat(adCosts(t)).containsExactly(entry(t + "-1", "12.50"), entry(t + "-2", null));
+
+        importFile(t + ".xlsx", Xlsx.of(row("platform", "externalId", "accountName"),
+                        row("FACEBOOK", t + "-1", "page-" + t)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updatedPosts").value(0));
+        assertThat(adCosts(t)).containsEntry(t + "-1", "12.50");
+
+        importFile(t + ".xlsx", Xlsx.of(row("platform", "externalId", "accountName", "adCost"),
+                        row("FACEBOOK", t + "-3", "page-" + t, -1)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.errors[0].row").value(2))
+                .andExpect(jsonPath("$.errors[0].column").value("adCost"));
+    }
+
+    /** externalId → ad_cost as MySQL prints it, in externalId order. */
+    private Map<String, String> adCosts(String token) {
+        Map<String, String> costs = new LinkedHashMap<>();
+        jdbcTemplate.query("select external_id, cast(ad_cost as char) as cost from posts where external_id like ? "
+                + "order by external_id", rs -> {
+                    costs.put(rs.getString("external_id"), rs.getString("cost"));
+                }, token + "-%");
+        return costs;
     }
 
     @Test

@@ -93,7 +93,7 @@ class PostServiceTests {
         PostResponse response = postService.get(7L);
 
         assertThat(response).isEqualTo(new PostResponse(7L, SocialPlatform.FACEBOOK, "ext-7", "sun.asterisk",
-                "https://facebook.com/p/7", "Xin chào", Instant.parse("2026-02-28T10:00:00Z"), CREATED, UPDATED));
+                "https://facebook.com/p/7", "Xin chào", Instant.parse("2026-02-28T10:00:00Z"), null, CREATED, UPDATED));
     }
 
     @Test
@@ -112,7 +112,7 @@ class PostServiceTests {
                 .thenAnswer(inv -> persisted(inv.<Post>getArgument(0), 1L, CREATED, CREATED));
 
         PostResponse response = postService.create(new PostCreateRequest(SocialPlatform.FACEBOOK, " ext-1 ",
-                " sun.asterisk ", "  ", "", Instant.parse("2026-02-28T10:00:00.123456789Z")));
+                " sun.asterisk ", "  ", "", Instant.parse("2026-02-28T10:00:00.123456789Z"), null));
 
         ArgumentCaptor<Post> saved = ArgumentCaptor.forClass(Post.class);
         verify(postRepository).save(saved.capture());
@@ -125,7 +125,7 @@ class PostServiceTests {
         // DATETIME(6) keeps microseconds: truncated before saving so the response matches what is stored.
         assertThat(post.getPublishedAt()).isEqualTo(Instant.parse("2026-02-28T10:00:00.123456Z"));
         assertThat(response).isEqualTo(new PostResponse(1L, SocialPlatform.FACEBOOK, "ext-1", "sun.asterisk",
-                null, null, Instant.parse("2026-02-28T10:00:00.123456Z"), CREATED, CREATED));
+                null, null, Instant.parse("2026-02-28T10:00:00.123456Z"), null, CREATED, CREATED));
     }
 
     @Test
@@ -133,7 +133,7 @@ class PostServiceTests {
         when(postRepository.existsByPlatformAndExternalId(SocialPlatform.TWITTER, "ext-1")).thenReturn(true);
 
         assertThatThrownBy(() -> postService.create(
-                new PostCreateRequest(SocialPlatform.TWITTER, "ext-1", "a", null, null, null)))
+                new PostCreateRequest(SocialPlatform.TWITTER, "ext-1", "a", null, null, null, null)))
                 .isInstanceOf(ConflictException.class)
                 .hasMessage("Bài viết TWITTER có externalId = ext-1 đã tồn tại");
         verify(postRepository, never()).save(any());
@@ -146,11 +146,11 @@ class PostServiceTests {
         when(postRepository.saveAndFlush(post)).thenReturn(post);
 
         PostResponse response = postService.update(7L, new PostUpdateRequest(" new.account ",
-                " https://x.com/p/7 ", " Nội dung mới ", Instant.parse("2026-02-27T00:00:00.000000999Z"),
+                " https://x.com/p/7 ", " Nội dung mới ", Instant.parse("2026-02-27T00:00:00.000000999Z"), null,
                 UPDATED.plusNanos(999)));
 
         assertThat(response).isEqualTo(new PostResponse(7L, SocialPlatform.FACEBOOK, "ext-7", "new.account",
-                "https://x.com/p/7", "Nội dung mới", Instant.parse("2026-02-27T00:00:00Z"), CREATED, UPDATED));
+                "https://x.com/p/7", "Nội dung mới", Instant.parse("2026-02-27T00:00:00Z"), null, CREATED, UPDATED));
         verify(postRepository, never()).findById(any());
         // A new account changes the followers summed per account.
         verify(statsChanges).postChanged(7L);
@@ -162,7 +162,7 @@ class PostServiceTests {
         when(postRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(post));
         when(postRepository.saveAndFlush(post)).thenReturn(post);
 
-        postService.update(7L, new PostUpdateRequest(post.getAccountName(), null, "other content", null, UPDATED));
+        postService.update(7L, new PostUpdateRequest(post.getAccountName(), null, "other content", null, null, UPDATED));
 
         verify(statsChanges, never()).postChanged(anyLong());
     }
@@ -171,7 +171,7 @@ class PostServiceTests {
     void updateUnknownIdThrowsNotFoundWithoutSaving() {
         when(postRepository.findByIdForUpdate(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> postService.update(99L, new PostUpdateRequest("a", null, null, null, UPDATED)))
+        assertThatThrownBy(() -> postService.update(99L, new PostUpdateRequest("a", null, null, null, null, UPDATED)))
                 .isInstanceOf(ResourceNotFoundException.class);
         verify(postRepository, never()).saveAndFlush(any());
     }
@@ -182,7 +182,7 @@ class PostServiceTests {
         when(postRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(post));
 
         assertThatThrownBy(() -> postService.update(7L,
-                new PostUpdateRequest("other.account", null, null, null, CREATED)))
+                new PostUpdateRequest("other.account", null, null, null, null, CREATED)))
                 .isInstanceOf(ConflictException.class)
                 .hasMessage("Bài viết id = 7 đã bị sửa sau khi bạn tải, hãy tải lại rồi thử lại");
         verify(postRepository, never()).saveAndFlush(any());

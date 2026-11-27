@@ -9,6 +9,7 @@ import jakarta.validation.ValidatorFactory;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -109,21 +110,30 @@ class ExcelWriterTests {
 
     record Imported(
             @ExcelColumn(name = "name", required = true) String name,
-            @ExcelColumn(name = "at") Instant at) {
+            @ExcelColumn(name = "at") Instant at,
+            @ExcelColumn(name = "cost") BigDecimal cost) {
     }
 
     record Exported(
             @ExcelColumn(name = "name") String name,
-            @ExcelColumn(name = "at") Instant at) {
+            @ExcelColumn(name = "at") Instant at,
+            @ExcelColumn(name = "cost") BigDecimal cost) {
     }
 
     @Test
-    void exportedDateReadsBackAsTheSameInstant() throws IOException {
+    void exportedDateAndAmountReadBackAsTheSameValues() throws IOException {
         Instant at = Instant.parse("2026-11-20T17:30:15.123Z");
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (ExcelExport export = writer.newWorkbook()) {
-            writer.addSheet(export, "Rows", Exported.class).append(new Exported("a", at));
+            writer.addSheet(export, "Rows", Exported.class).append(new Exported("a", at, new BigDecimal("1234.56")));
             export.write(out);
+        }
+
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(out.toByteArray()))) {
+            Cell cost = workbook.getSheet("Rows").getRow(1).getCell(2);
+            // A number cell (sums work in Excel), shown with thousands separators and two decimals
+            assertThat(cost.getNumericCellValue()).isEqualTo(1234.56);
+            assertThat(cost.getCellStyle().getDataFormatString()).isEqualTo("#,##0.00");
         }
 
         try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
@@ -131,6 +141,7 @@ class ExcelWriterTests {
                     .read(new ByteArrayInputStream(out.toByteArray()), Imported.class, 10);
             assertThat(sheet.errors()).isEmpty();
             assertThat(sheet.rows().getFirst().value().at()).isEqualTo(at);
+            assertThat(sheet.rows().getFirst().value().cost()).isEqualByComparingTo("1234.56");
         }
     }
 
@@ -140,7 +151,7 @@ class ExcelWriterTests {
         try (ExcelExport export = writer.newWorkbook()) {
             ExcelWriter.SheetWriter<Exported> sheet = writer.addSheet(export, "Rows", Exported.class);
             for (int i = 0; i < 1_000; i++) {
-                sheet.append(new Exported("row " + i, null));
+                sheet.append(new Exported("row " + i, null, null));
             }
             assertThat(sheet.rowCount()).isEqualTo(1_000);
             // Older rows were flushed to the temporary file.
@@ -162,7 +173,7 @@ class ExcelWriterTests {
         ExcelExport export = writer.newWorkbook();
         ExcelWriter.SheetWriter<Exported> sheet = writer.addSheet(export, "Rows", Exported.class);
         for (int i = 0; i < 500; i++) {
-            sheet.append(new Exported("row " + i, null));
+            sheet.append(new Exported("row " + i, null, null));
         }
         long whileOpen = sheetTempFiles(tempDir);
         assertThat(whileOpen).isPositive();

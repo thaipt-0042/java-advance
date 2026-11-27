@@ -2,6 +2,8 @@ package com.sunasterisk.socialanalytics.web;
 
 import com.sunasterisk.socialanalytics.exception.ConflictException;
 import com.sunasterisk.socialanalytics.security.CurrentUser;
+import com.sunasterisk.socialanalytics.service.ExchangeRateService;
+import com.sunasterisk.socialanalytics.service.PostService;
 import com.sunasterisk.socialanalytics.service.metrics.MetricUpdateService;
 import java.time.Clock;
 import org.springframework.security.core.Authentication;
@@ -24,10 +26,15 @@ public class DashboardController {
     static final String ALREADY_RUNNING = "Job đang chạy, chưa thể chạy thêm. Hãy thử lại khi chạy xong.";
 
     private final MetricUpdateService metricUpdateService;
+    private final PostService postService;
+    private final ExchangeRateService exchangeRateService;
     private final Clock clock;
 
-    public DashboardController(MetricUpdateService metricUpdateService, Clock clock) {
+    public DashboardController(MetricUpdateService metricUpdateService, PostService postService,
+            ExchangeRateService exchangeRateService, Clock clock) {
         this.metricUpdateService = metricUpdateService;
+        this.postService = postService;
+        this.exchangeRateService = exchangeRateService;
         this.clock = clock;
     }
 
@@ -40,6 +47,9 @@ public class DashboardController {
     public String dashboard(Authentication authentication, Model model) {
         model.addAttribute("view", DashboardView.of(metricUpdateService.latest(), clock.getZone()));
         model.addAttribute("username", CurrentUser.displayName(authentication));
+        // The page still shows when the SOAP service fails: the block then says the rate is unavailable.
+        model.addAttribute("adCost", AdCostView.of(postService.totalAdCost(),
+                exchangeRateService.usdToVndToday().orElse(null)));
         model.addAttribute("admin", authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch("ROLE_ADMIN"::equals));

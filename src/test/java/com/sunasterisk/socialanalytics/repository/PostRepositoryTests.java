@@ -8,12 +8,14 @@ import com.sunasterisk.socialanalytics.entity.SocialMetric;
 import com.sunasterisk.socialanalytics.entity.SocialPlatform;
 import com.sunasterisk.socialanalytics.support.FixedClockConfiguration;
 import com.sunasterisk.socialanalytics.util.LikePatterns;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -50,6 +52,22 @@ class PostRepositoryTests extends JpaRepositoryTestBase {
         assertThat(found.getUpdatedAt()).isEqualTo(FixedClockConfiguration.NOW);
         assertThat(jdbcTemplate.queryForObject("select platform from posts where id = ?", String.class, found.getId()))
                 .isEqualTo("FACEBOOK");
+    }
+
+    @Test
+    void sumsTheAdCostOfThePostsThatHaveOneAndTheDatabaseRefusesANegativeOne() {
+        BigDecimal before = postRepository.totalAdCost();
+        Post first = new Post(SocialPlatform.FACEBOOK, "post-repo-ad-1", "page");
+        first.setAdCost(new BigDecimal("12.34"));
+        Post second = new Post(SocialPlatform.FACEBOOK, "post-repo-ad-2", "page");
+        second.setAdCost(new BigDecimal("0.66"));
+        Post withoutCost = new Post(SocialPlatform.TWITTER, "post-repo-ad-3", "page");
+        postRepository.saveAllAndFlush(List.of(first, second, withoutCost));
+
+        assertThat(postRepository.totalAdCost().subtract(before)).isEqualByComparingTo("13.00");
+        assertThatThrownBy(() -> jdbcTemplate.update("update posts set ad_cost = -0.01 where id = ?", first.getId()))
+                .isInstanceOf(DataAccessException.class)
+                .hasMessageContaining("ck_posts_ad_cost");
     }
 
     @Test

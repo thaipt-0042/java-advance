@@ -145,11 +145,16 @@ class ReportApiTests extends ApiTestBase {
             Sheet sheet = workbook.getSheet("Posts");
             assertThat(sheet.getLastRowNum()).isZero();
             assertThat(sheet.getRow(0)).extracting(Cell::getStringCellValue).containsExactly("platform",
-                    "externalId", "accountName", "url", "content", "publishedAt", "likes", "shares", "comments",
-                    "followers", "capturedAt");
+                    "externalId", "accountName", "url", "content", "publishedAt", "adCost", "adCostVnd", "likes", "shares",
+                    "comments", "followers", "capturedAt");
             // No statistics in 1999 either.
             assertThat(workbook.getSheet("Daily").getLastRowNum()).isZero();
             assertThat(workbook.getSheetName(1)).isEqualTo("Daily");
+            // A mock-servlet test has no server to call for the rate: the sheet says so instead.
+            Sheet rates = workbook.getSheet("ExchangeRates");
+            assertThat(workbook.getSheetName(2)).isEqualTo("ExchangeRates");
+            assertThat(rates.getRow(1).getCell(4).getStringCellValue()).startsWith("Không lấy được tỷ giá");
+            assertThat(rates.getRow(1).getCell(3)).isNull();
         }
     }
 

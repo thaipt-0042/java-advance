@@ -12,6 +12,7 @@ import com.sunasterisk.socialanalytics.exception.ResourceNotFoundException;
 import com.sunasterisk.socialanalytics.repository.PostRepository;
 import com.sunasterisk.socialanalytics.util.DbTime;
 import com.sunasterisk.socialanalytics.util.LikePatterns;
+import java.math.BigDecimal;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,6 +64,7 @@ public class PostService {
         post.setUrl(blankToNull(request.url()));
         post.setContent(blankToNull(request.content()));
         post.setPublishedAt(DbTime.toColumnPrecision(request.publishedAt()));
+        post.setAdCost(request.adCost());
         return PostResponse.from(postRepository.save(post));
     }
 
@@ -84,8 +86,14 @@ public class PostService {
         post.setUrl(blankToNull(request.url()));
         post.setContent(blankToNull(request.content()));
         post.setPublishedAt(DbTime.toColumnPrecision(request.publishedAt()));
+        post.setAdCost(request.adCost());
         // Flush now so updatedAt in the response is the new value.
         return PostResponse.from(postRepository.saveAndFlush(post));
+    }
+
+    /** Total advertising cost (USD) of all posts, for the dashboard. */
+    public BigDecimal totalAdCost() {
+        return postRepository.totalAdCost();
     }
 
     /** Deletes the post; its metrics are removed by the database ({@code ON DELETE CASCADE}). */

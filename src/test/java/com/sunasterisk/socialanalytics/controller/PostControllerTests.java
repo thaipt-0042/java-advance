@@ -126,7 +126,7 @@ class PostControllerTests {
                 .andExpect(jsonPath("$.id").value(7));
 
         verify(postService).create(new PostCreateRequest(SocialPlatform.FACEBOOK, "ext-7", "sun.asterisk",
-                "https://facebook.com/p/7", "Xin chào", Instant.parse("2026-02-28T10:00:00Z")));
+                "https://facebook.com/p/7", "Xin chào", Instant.parse("2026-02-28T10:00:00Z"), null));
     }
 
     @Test
@@ -176,7 +176,7 @@ class PostControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(7));
 
-        verify(postService).update(7L, new PostUpdateRequest("sun.asterisk", null, "Xin chào", null, CREATED));
+        verify(postService).update(7L, new PostUpdateRequest("sun.asterisk", null, "Xin chào", null, null, CREATED));
     }
 
     @Test
@@ -223,6 +223,6 @@ class PostControllerTests {
 
     private static PostResponse sample(long id) {
         return new PostResponse(id, SocialPlatform.FACEBOOK, "ext-" + id, "sun.asterisk", "https://facebook.com/p/" + id,
-                "Xin chào", Instant.parse("2026-02-28T10:00:00Z"), CREATED, CREATED);
+                "Xin chào", Instant.parse("2026-02-28T10:00:00Z"), null, CREATED, CREATED);
     }
 }

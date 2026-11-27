@@ -15,6 +15,7 @@ Mini project của khóa **Java Spring Boot – Advance**: ứng dụng web giú
 | Excel | Apache POI (`poi-ooxml`) |
 | Background job | `@Scheduled` + `@Async` (`ThreadPoolTaskExecutor`), ShedLock trên MySQL |
 | Messaging | JMS, Apache Artemis 2.53 (trước đây là ActiveMQ Artemis), chạy bằng Docker Compose |
+| SOAP | Spring Web Services 5 (`WebServiceTemplate` và endpoint giả lập), JAXB sinh từ XSD (`jaxb2-maven-plugin`) |
 | Logging | SLF4J + Logback (`logback-spring.xml`) |
 | Testing | JUnit 5 + Mockito + MockMvc, Testcontainers (MySQL) |
 
@@ -131,6 +132,7 @@ curl -b cookies.txt -H "X-XSRF-TOKEN: ..." -F "file=@posts.xlsx" http://localhos
 | `url` | không | `http(s)://…`, tối đa 1000 ký tự |
 | `content` | không | tối đa 5000 ký tự |
 | `publishedAt` | không | ô kiểu ngày giờ (hiểu theo giờ `APP_TIME_ZONE`), hoặc text `2026-03-01 10:00` (cũng theo giờ đó) / `2026-03-01T03:00:00Z` (có múi giờ) |
+| `adCost` | không | chi phí quảng cáo (USD), số ≥ 0, tối đa 2 chữ số thập phân; ô số hoặc text `12.50` |
 | `likes`, `shares`, `comments`, `followers` | không | số nguyên ≥ 0; có một cột thì phải có đủ cả bốn trong dòng đó |
 
 **Quy tắc** (`docs/cau-hoi-lam-ro.md` Q3, Q4):
@@ -152,7 +154,8 @@ curl -b cookies.txt -OJ "http://localhost:8080/api/v1/export-report?from=2026-11
 ```
 
 - Tham số đều tùy chọn: `from` / `to` là ngày đăng bài (`publishedAt`) theo giờ `APP_TIME_ZONE`, bao gồm cả hai đầu, tối đa 366 ngày; `platform` là `FACEBOOK` hoặc `TWITTER`. Có `from` hoặc `to` thì bài không có ngày đăng bị bỏ.
-- Sheet `Posts`: mỗi bài một dòng, theo thứ tự tạo, kèm **snapshot mới nhất** (`likes`, `shares`, `comments`, `followers`, `capturedAt`; trống nếu bài chưa có snapshot). Thời gian là ô ngày giờ theo giờ `APP_TIME_ZONE`. Tên cột giống file import, thêm `capturedAt`.
+- Sheet `Posts`: mỗi bài một dòng, theo thứ tự tạo, kèm **snapshot mới nhất** (`likes`, `shares`, `comments`, `followers`, `capturedAt`; trống nếu bài chưa có snapshot). Thời gian là ô ngày giờ theo giờ `APP_TIME_ZONE`. Tên cột giống file import, thêm `adCostVnd` (chi phí đổi sang VND theo tỷ giá hôm nay, làm tròn tới đồng) và `capturedAt`.
+- Sheet `ExchangeRates`: tỷ giá USD → VND đã dùng (ngày, tỷ giá). Dịch vụ tỷ giá lỗi thì vẫn xuất file, `adCostVnd` để trống và sheet này ghi chú lý do.
 - Sheet `Daily`: thống kê từng ngày trong `from`..`to` (mọi ngày nếu không lọc) và nền tảng, xem "Thống kê tổng hợp và JMS" (`docs/cau-hoi-lam-ro.md` Q11).
 - Tối đa 100.000 bài mỗi file (422, hãy thu hẹp bộ lọc). File được tạo bằng `SXSSFWorkbook`: chỉ giữ 100 dòng mỗi sheet trong bộ nhớ, phần còn lại ghi ra file tạm (nén) và được xóa sau khi gửi.
 - Nội dung bài được ghi dạng text, kể cả khi bắt đầu bằng `=`: Excel không chạy nó như công thức.
@@ -203,6 +206,14 @@ Bảng được tính lại qua queue `analytics.stats-refresh` trên Apache Art
 - Dashboard vẽ biểu đồ theo ngày bằng Chart.js (chọn likes / shares / comments / followers, 7 / 30 / 90 ngày; điểm của ngày không đo được vẽ dạng ✕). Trang kết nối `/ws`, nhận `STATS_UPDATED` thì tải lại `/chart-data`, nhận `JOB_FINISHED` thì tải lại khối "Lần chạy gần nhất" (`GET /dashboard/run-status`), không reload trang. Mất kết nối thì tự kết nối lại sau 5 giây và tải lại biểu đồ. Thư viện JS phục vụ từ chính app (`/webjars/...`), không dùng CDN, kể cả trang iframe của SockJS.
 - Giới hạn: broker STOMP nằm trong bộ nhớ của từng instance. Event chỉ tới trình duyệt nối vào instance đã phát ra nó: `STATS_UPDATED` do instance đang giữ queue thống kê phát, `JOB_FINISHED` do instance đã chạy job phát.
 
+## Chi phí quảng cáo và tỷ giá (SOAP)
+
+- Mỗi bài có thể có `adCost`: chi phí quảng cáo tính bằng USD (`DECIMAL(15,2)`, ≥ 0, không bắt buộc), nhập qua API (`POST` / `PUT /api/v1/posts`; `PUT` không gửi `adCost` thì xóa) hoặc cột `adCost` của file import. Không lưu số đã đổi: VND được tính khi hiển thị / xuất file (`docs/cau-hoi-lam-ro.md` Q7).
+- Tỷ giá lấy từ dịch vụ SOAP. App tự có một dịch vụ **giả lập** ở `/soap` (WSDL: `/soap/exchange-rates.wsdl`, sinh từ `src/main/resources/xsd/exchange-rates.xsd`): một thao tác `getExchangeRate {from, to, date}` trả `rate`. USD → VND là 25.000 cộng một phần lệch (0–400) chỉ phụ thuộc vào ngày, nên cùng ngày luôn cùng tỷ giá; VND → USD là nghịch đảo; tiền tệ khác thì trả SOAP fault. `/soap/**` không cần đăng nhập và không kiểm CSRF (như một dịch vụ bên ngoài).
+- Client (`soap/ExchangeRateClient`, `WebServiceTemplate`) gọi `APP_EXCHANGE_RATE_URL`; để trống thì gọi `/soap` của chính app trên cổng đang chạy. Timeout: kết nối 2 giây, chờ trả lời 5 giây (`app.exchange-rate.connect-timeout` / `read-timeout`). Tỷ giá của một ngày lấy được thì giữ trong bộ nhớ; lỗi thì không giữ, lần sau gọi lại.
+- `GET /api/v1/exchange-rates/usd-vnd?date=2026-11-20` (cần đăng nhập; mặc định hôm nay theo `APP_TIME_ZONE`): `{from, to, date, rate}`. Dịch vụ lỗi (fault, quá thời gian, không kết nối được) thì 502 `BAD_GATEWAY`.
+- Dashboard có khối "Chi phí quảng cáo": tỷ giá hôm nay và tổng chi phí của các bài bằng USD và VND. Không lấy được tỷ giá thì trang vẫn hiện, chỉ có số USD và dòng báo lỗi.
+
 ## Test
 
 ```bash
@@ -221,6 +232,7 @@ Bảng được tính lại qua queue `analytics.stats-refresh` trên Apache Art
 | Trang web | `web/DashboardControllerTests`, `security/LoginFlowApiTests` | `@WebMvcTest` với template và security thật (giờ Việt Nam, nút chỉ cho `ADMIN`, trang lỗi); server thật: đăng nhập rồi bấm nút với `_csrf` của form |
 | JMS và thống kê | `messaging/*Tests`, `repository/DailyStatsRepositoryTests`, `service/Stats*Tests` | Broker thật (Testcontainers): chỉ gửi sau commit, rollback thì không gửi, message lỗi 4 lần vào DLQ; truy vấn thống kê với ví dụ Q12 trên MySQL |
 | WebSocket | `websocket/WebSocketApiTests` | Server thật, client STOMP qua SockJS với cookie đăng nhập và token từ thẻ meta, cả transport WebSocket lẫn chỉ XHR: nhận event; thiếu token, chưa đăng nhập, subscribe topic khác thì bị từ chối |
+| SOAP | `soap/ExchangeRateEndpointTests`, `ExchangeRateClientTests`, `ExchangeRateApiTests` | Endpoint qua `MockWebServiceClient` (đúng XSD, fault khi tiền tệ không hỗ trợ); client qua `MockWebServiceServer` và server HTTP chậm / cổng đóng (fault, timeout, không kết nối được); server thật: WSDL, gọi SOAP không cần đăng nhập, API và dashboard lấy tỷ giá từ `/soap` |
 | Quyền truy cập | `security/SecurityConfigTests`, `DemoLoginDisabledTests`, `OAuth2LoginTests`, `EncryptedTokensTests` | `@WebMvcTest` với cấu hình security thật: 401/403, CSRF, đường dẫn không khai báo, đăng nhập demo |
 | Server thật | `controller/ForwardedHeadersApiTests`, `ImportUploadLimitApiTests`, `security/LoginFlowApiTests` | `RANDOM_PORT` + `java.net.http` (`support/LoginSession` đăng nhập như trình duyệt): những gì Tomcat làm mà MockMvc bỏ qua (header proxy, giới hạn upload, cookie CSRF) |
 
