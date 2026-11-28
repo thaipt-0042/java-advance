@@ -110,7 +110,7 @@ Mọi bảng có `id` (BIGINT AUTO_INCREMENT), `created_at`, `updated_at` (DATET
 
 ## Lộ trình schema (dự kiến)
 
-Phần này là **thiết kế, chưa có migration**. Số version (`V2`, `V3`, …) đặt khi làm, theo thứ tự issue được merge; tài liệu chỉ ghi "migration mới ở #N". Câu hỏi còn mở về các bảng này nằm ở [cau-hoi-lam-ro.md](cau-hoi-lam-ro.md) (Q…), phần nào phụ thuộc câu trả lời thì ghi rõ.
+Phần này ban đầu là **thiết kế**; số version đặt khi làm. Đã có migration: `import_batches` (`V2`, #6), `metric_update_runs` và `shedlock` (`V3`, #10), `daily_platform_stats` (`V4`, #12). Các bảng còn lại (#9) vẫn là dự kiến. Câu hỏi còn mở về các bảng này nằm ở [cau-hoi-lam-ro.md](cau-hoi-lam-ro.md) (Q…), phần nào phụ thuộc câu trả lời thì ghi rõ.
 
 | Bảng | Issue thêm | Giai đoạn của đề cần nó | Vì sao cần bảng riêng |
 |---|---|---|---|
@@ -173,12 +173,12 @@ erDiagram
 | Cột | Kiểu (MySQL) | Ghi chú |
 |---|---|---|
 | `client_registration_id` | VARCHAR(100), PK | `facebook` / `twitter` (id đăng ký client trong cấu hình) |
-| `principal_name` | VARCHAR(200), PK | tên principal sau khi login, đề xuất là id tài khoản phía provider |
+| `principal_name` | VARCHAR(200), PK | tên principal sau khi login: id tài khoản phía provider (`SocialUser.getName()`, #9) |
 | `access_token_type` | VARCHAR(100) | `Bearer` |
 | `access_token_value` | BLOB | token truy cập |
 | `access_token_issued_at`, `access_token_expires_at` | TIMESTAMP | |
 | `access_token_scopes` | VARCHAR(1000), NULL | |
-| `refresh_token_value` | BLOB, NULL | Facebook không cấp refresh token theo luồng thường; X có thể cấp khi xin scope `offline.access` (kiểm tra khi làm #9) |
+| `refresh_token_value` | BLOB, NULL | Facebook không cấp refresh token theo luồng thường; X chỉ cấp khi xin scope `offline.access`, mà #9 không xin (chỉ cần đăng nhập), nên hiện luôn NULL |
 | `refresh_token_issued_at` | TIMESTAMP, NULL | |
 | `created_at` | TIMESTAMP, mặc định thời điểm insert | |
 
@@ -235,7 +235,7 @@ Bảng của Spring Session JDBC (`spring-boot-starter-session-jdbc`). Migration
 
 ### `shedlock` (#10)
 
-Bảng của thư viện ShedLock (`JdbcTemplateLockProvider`), theo schema MySQL trong README của ShedLock; **kiểm tra lại với phiên bản đang dùng khi làm #10**.
+Bảng của thư viện ShedLock (`JdbcTemplateLockProvider`), theo schema MySQL trong README của ShedLock (đã đối chiếu khi làm #10, ShedLock 7.11.0).
 
 | Cột | Kiểu | Ghi chú |
 |---|---|---|
@@ -255,12 +255,14 @@ Một dòng cho mỗi **ngày theo giờ Việt Nam** và mỗi nền tảng. S�
 | `stat_date` | DATE | PK | ngày theo `Asia/Ho_Chi_Minh` |
 | `platform` | VARCHAR(20) | PK, CHECK `FACEBOOK`/`TWITTER`, collation `utf8mb4_0900_bin` | |
 | `posts_tracked` | INT | NOT NULL, CHECK `>= 0` | số bài có ít nhất một snapshot tính đến hết ngày |
-| `posts_measured` | INT | NOT NULL, CHECK `>= 0` | số bài có snapshot **trong chính ngày đó**; nhỏ hơn `posts_tracked` nghĩa là ngày đó đo thiếu (job lỗi một phần) |
+| `posts_measured` | INT | NOT NULL, CHECK `>= 0` và `<= posts_tracked` | số bài có snapshot **trong chính ngày đó**; nhỏ hơn `posts_tracked` nghĩa là ngày đó đo thiếu (job lỗi một phần) |
 | `likes`, `shares`, `comments` | BIGINT | NOT NULL, CHECK `>= 0` | tổng theo bài, mỗi bài lấy snapshot **mới nhất tính đến hết ngày** |
 | `followers` | BIGINT | NOT NULL, CHECK `>= 0` | tổng theo **tài khoản** `(platform, account_name)`, mỗi tài khoản lấy giá trị mới nhất tính đến hết ngày (từ snapshot của bất kỳ bài nào của tài khoản đó); không cộng theo bài (quyết định 2) |
 | `refreshed_at` | DATETIME(6) | NOT NULL | lần tính gần nhất |
 
-- **Tính lại từ dữ liệu gốc, không cộng dồn**: listener nhận ngày bắt đầu `fromDate`, với mỗi ngày từ `fromDate` tới hôm nay xóa dòng của ngày đó rồi `INSERT … SELECT` lại từ `posts` + `social_metrics` (`ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY captured_at DESC)` trên các snapshot trước ranh giới cuối ngày), tất cả trong một transaction. Nhận trùng message thì kết quả vẫn như cũ (idempotent), và hai lần tính chạy song song không làm mất cập nhật của nhau. Đề xuất listener chạy một luồng (concurrency 1) để các lần tính không chen nhau.
+- **Tính lại từ dữ liệu gốc, không cộng dồn**: listener nhận ngày bắt đầu `fromDate`, với mỗi ngày từ `fromDate` tới hôm nay xóa dòng của ngày đó rồi `INSERT … SELECT` lại từ `posts` + `social_metrics`, tất cả trong một transaction. Nhận trùng message thì kết quả vẫn như cũ (idempotent), và listener chạy một luồng (concurrency 1) nên các lần tính không chen nhau.
+  - Snapshot mới nhất của mỗi bài trước ranh giới cuối ngày: `max(captured_at)` theo từng bài (MySQL lấy thẳng từ index `UNIQUE (post_id, captured_at)`) rồi đọc đúng dòng đó. Đo trên 1,44 triệu snapshot (2.000 bài × 30 ngày × mỗi giờ): 2,4–2,9 giây mỗi ngày và không tăng theo độ dài lịch sử. Cách ban đầu (`ROW_NUMBER()` trên mọi snapshot trước ranh giới) mất 3,3–10,3 giây và tăng dần; `LATERAL … LIMIT 1` còn chậm hơn (9–10 giây) vì MySQL dựng lại bảng con cho từng bài.
+  - Transaction ở READ COMMITTED: ở REPEATABLE READ, `INSERT … SELECT` của MySQL khóa chia sẻ mọi dòng nguồn nó đọc, làm các request ghi `posts` / `social_metrics` cùng lúc bị chặn hoặc deadlock (đã gặp khi chạy test).
 - **Ranh giới ngày tính trong Java**: ngày `D` theo giờ Việt Nam là khoảng `[D 00:00, D+1 00:00)` đổi sang UTC từ bean `Clock`, truyền vào câu SQL dạng tham số. Không dùng `CONVERT_TZ(..., 'Asia/Ho_Chi_Minh')` vì cần bảng múi giờ của MySQL, mà image Docker/Testcontainers không chắc đã nạp.
 - **Ngày không có dòng** (app tắt cả ngày nên không ai tính lại): không có snapshot mới trong ngày đó, nên số đúng bằng dòng gần nhất trước đó của cùng nền tảng, với `posts_measured` = 0. `/chart-data` (#13) điền theo cách này; trước dòng đầu tiên của nền tảng thì là 0 (chưa có bài nào được đo).
 - **"Các ngày bị ảnh hưởng"** (Q5): đổi snapshot ngày `D` làm đổi mọi ngày từ `D` tới hôm nay, nên message chỉ mang `fromDate`:
