@@ -83,6 +83,18 @@ class DailyStatsRepositoryTests extends JpaRepositoryTestBase {
                 Long.class, DAY_1)).isEqualTo(1);
     }
 
+    @Test
+    void findLastBeforeGivesTheClosestEarlierRowOfThePlatform() {
+        String t = UUID.randomUUID().toString().substring(0, 8);
+        snapshot(post(t, "acc-" + t), at(DAY_1, "10:00"), 5, 7);
+        DailyStats day1 = recompute(DAY_1);
+
+        assertThat(repository.findLastBefore(DAY_1.plusDays(30), SocialPlatform.TWITTER))
+                .hasValueSatisfying(row -> assertThat(row.statDate()).isAfterOrEqualTo(DAY_1));
+        assertThat(repository.findLastBefore(DAY_1.plusDays(1), SocialPlatform.TWITTER)).contains(day1);
+        assertThat(repository.findLastBefore(LocalDate.of(1990, 1, 1), SocialPlatform.TWITTER)).isEmpty();
+    }
+
     /** Recomputes a day (Vietnam time) and returns its Twitter row, zeros when there is none. */
     private DailyStats recompute(LocalDate day) {
         repository.recompute(day, day.atStartOfDay(VIETNAM).toInstant(),

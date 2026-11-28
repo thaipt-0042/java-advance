@@ -11,6 +11,7 @@ import com.sunasterisk.socialanalytics.repository.AccountPostRepository.Account;
 import com.sunasterisk.socialanalytics.repository.MetricUpdateRunRepository;
 import com.sunasterisk.socialanalytics.service.StatsChanges;
 import com.sunasterisk.socialanalytics.util.DbTime;
+import com.sunasterisk.socialanalytics.websocket.DashboardEvent;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -29,6 +30,7 @@ import net.javacrumbs.shedlock.core.SimpleLock;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -58,20 +60,22 @@ public class MetricUpdateService {
     private final JobLauncher jobLauncher;
     private final LockProvider lockProvider;
     private final StatsChanges statsChanges;
+    private final ApplicationEventPublisher events;
     private final MetricsJobProperties properties;
     private final Clock clock;
     private final TransactionTemplate transaction;
 
     public MetricUpdateService(MetricUpdateRunRepository runRepository, AccountPostRepository accountPostRepository,
             AccountMetricsUpdater accountUpdater, JobLauncher jobLauncher, LockProvider lockProvider,
-            StatsChanges statsChanges, MetricsJobProperties properties, Clock clock,
-            PlatformTransactionManager transactionManager) {
+            StatsChanges statsChanges, ApplicationEventPublisher events, MetricsJobProperties properties,
+            Clock clock, PlatformTransactionManager transactionManager) {
         this.runRepository = runRepository;
         this.accountPostRepository = accountPostRepository;
         this.accountUpdater = accountUpdater;
         this.jobLauncher = jobLauncher;
         this.lockProvider = lockProvider;
         this.statsChanges = statsChanges;
+        this.events = events;
         this.properties = properties;
         this.clock = clock;
         this.transaction = new TransactionTemplate(transactionManager);
@@ -209,6 +213,8 @@ public class MetricUpdateService {
             MetricUpdateRun run = runRepository.findById(runId)
                     .orElseThrow(() -> new IllegalStateException("Run " + runId + " not found"));
             change.accept(run);
+            // Pushed to the dashboards after commit (#13).
+            events.publishEvent(new DashboardEvent.JobFinished(now(), runId, run.getStatus(), run.getFinishedAt()));
             return run;
         });
     }

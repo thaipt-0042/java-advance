@@ -47,6 +47,16 @@
             <artifactId>spring-boot-starter-session-jdbc</artifactId>
         </dependency>
 
+        <!-- Live dashboard events: STOMP over WebSocket (SockJS fallbacks), secured per message -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-messaging</artifactId>
+        </dependency>
+
         <!-- Server-rendered pages (dashboard) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

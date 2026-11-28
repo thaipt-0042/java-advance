@@ -1,11 +1,14 @@
 package com.sunasterisk.socialanalytics.repository;
 
 import com.sunasterisk.socialanalytics.entity.SocialPlatform;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -90,10 +93,27 @@ public class DailyStatsRepository {
                         .addValue("from", from)
                         .addValue("to", to)
                         .addValue("platform", platform == null ? null : platform.name()),
-                (rs, rowNum) -> new DailyStats(rs.getObject("stat_date", LocalDate.class),
-                        SocialPlatform.valueOf(rs.getString("platform")), rs.getInt("posts_tracked"),
-                        rs.getInt("posts_measured"), rs.getLong("likes"), rs.getLong("shares"),
-                        rs.getLong("comments"), rs.getLong("followers")));
+                DailyStatsRepository::row);
+    }
+
+    /** The last row of {@code platform} before {@code day}, if any: the state carried into the days after it. */
+    public Optional<DailyStats> findLastBefore(LocalDate day, SocialPlatform platform) {
+        return jdbc.query("""
+                        select stat_date, platform, posts_tracked, posts_measured, likes, shares, comments, followers
+                        from daily_platform_stats
+                        where stat_date < :day and platform = :platform
+                        order by stat_date desc
+                        limit 1
+                        """,
+                new MapSqlParameterSource().addValue("day", day).addValue("platform", platform.name()),
+                DailyStatsRepository::row).stream().findFirst();
+    }
+
+    private static DailyStats row(ResultSet rs, int rowNum) throws SQLException {
+        return new DailyStats(rs.getObject("stat_date", LocalDate.class),
+                SocialPlatform.valueOf(rs.getString("platform")), rs.getInt("posts_tracked"),
+                rs.getInt("posts_measured"), rs.getLong("likes"), rs.getLong("shares"), rs.getLong("comments"),
+                rs.getLong("followers"));
     }
 
     /** DATETIME columns hold UTC wall-clock time (see {@code PostBulkRepository}). */

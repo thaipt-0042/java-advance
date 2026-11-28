@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Social Analytics</title>
     <link rel="stylesheet" th:href="@{/css/app.css}">
+    <!-- CSRF token (masked) for the STOMP CONNECT frame and the header name it goes in -->
+    <meta name="_csrf" th:content="${_csrf.token}">
+    <meta name="_csrf_header" th:content="${_csrf.headerName}">
 </head>
 <body>
 <header class="topbar">

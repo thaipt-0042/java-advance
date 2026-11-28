@@ -3,6 +3,7 @@ package com.sunasterisk.socialanalytics.service;
 import com.sunasterisk.socialanalytics.messaging.StatsRefreshMessage;
 import com.sunasterisk.socialanalytics.repository.DailyStatsRepository;
 import com.sunasterisk.socialanalytics.util.DbTime;
+import com.sunasterisk.socialanalytics.websocket.DashboardEvent;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -10,6 +11,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -32,11 +34,14 @@ public class StatsService {
 
     private final DailyStatsRepository dailyStatsRepository;
     private final NamedParameterJdbcTemplate jdbc;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
-    public StatsService(DailyStatsRepository dailyStatsRepository, NamedParameterJdbcTemplate jdbc, Clock clock) {
+    public StatsService(DailyStatsRepository dailyStatsRepository, NamedParameterJdbcTemplate jdbc,
+            ApplicationEventPublisher events, Clock clock) {
         this.dailyStatsRepository = dailyStatsRepository;
         this.jdbc = jdbc;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -62,6 +67,8 @@ public class StatsService {
                     new MapSqlParameterSource().addValue("now", LocalDateTime.ofInstant(now, ZoneOffset.UTC))
                             .addValue("id", message.batchId()));
         }
+        // Pushed to the dashboards after commit (#13).
+        events.publishEvent(new DashboardEvent.StatsUpdated(now, from, today));
         log.info("Recomputed statistics {}..{} ({} days, {} ms) for {}", from, today, days,
                 (System.nanoTime() - start) / 1_000_000, message);
         return days;
