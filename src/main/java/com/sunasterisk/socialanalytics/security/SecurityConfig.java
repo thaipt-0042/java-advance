@@ -1,21 +1,29 @@
 package com.sunasterisk.socialanalytics.security;
 
+import com.sunasterisk.socialanalytics.service.UserAccountService;
+import java.util.List;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
@@ -28,7 +36,8 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
  *       redirect.</li>
  *   <li><b>Web</b> (every other path): the login page, static files, health and Swagger are public; the dashboard
  *       needs a login, its "run the job now" button {@code ADMIN}; <b>any other path is denied</b>, so a path nobody declared is never open by accident.
- *       Not logged in: redirect to {@code /login} when the demo login is on; 403 while there is no login method.</li>
+ *       Not logged in: redirect to {@code /login}, which offers the configured Facebook / X logins and, in dev, the
+ *       demo form (#9).</li>
  * </ul>
  *
  * <p>CSRF is on for both. The token lives in the {@code XSRF-TOKEN} cookie (readable by JavaScript). The API only
@@ -40,11 +49,14 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
  */
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties(DemoLoginProperties.class)
+@EnableConfigurationProperties({DemoLoginProperties.class, SocialLoginProperties.class})
 public class SecurityConfig {
 
+    static final String LOGIN_PAGE = "/login";
+
     static final String[] PUBLIC_WEB_PATHS = {
-        "/login", "/error", "/css/**", "/js/**", "/favicon.ico", "/actuator/health", "/actuator/health/**",
+        "/login", "/oauth2/authorization/*", "/login/oauth2/code/*", "/error", "/css/**", "/js/**", "/favicon.ico",
+        "/actuator/health", "/actuator/health/**",
         // Only served in the dev profile (springdoc is off elsewhere); the API itself still needs a login.
         "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**",
     };
@@ -71,19 +83,38 @@ public class SecurityConfig {
 
     @Bean
     @Order(2)
-    SecurityFilterChain webSecurityFilterChain(HttpSecurity http, DemoLoginProperties demoLogin) {
+    SecurityFilterChain webSecurityFilterChain(HttpSecurity http, DemoLoginProperties demoLogin,
+            SocialLoginProperties socialLogin, ObjectProvider<JdbcTemplate> jdbcTemplate,
+            ObjectProvider<UserAccountService> userAccountService) {
         http.authorizeHttpRequests(requests -> requests
                         .requestMatchers(PUBLIC_WEB_PATHS).permitAll()
                         .requestMatchers(HttpMethod.POST, "/dashboard/update-metrics").hasRole("ADMIN")
                         .requestMatchers("/", "/dashboard").authenticated()
                         .anyRequest().denyAll())
                 .csrf(csrf -> csrf.spa())
-                .logout(logout -> logout.logoutSuccessUrl("/login?logout"));
+                .logout(logout -> logout.logoutSuccessUrl("/login?logout"))
+                // Our own /login page (provider buttons, and the demo form when on): not logged in → redirect there,
+                // even when no login method is configured (the page then says so).
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint(LOGIN_PAGE)));
         if (demoLogin.enabled()) {
-            // Spring Security's generated login page (with the CSRF field); not logged in → redirect to it. Setting
-            // an entry point by hand would turn the generated page off. Without any login method, not logged in →
-            // 403 (OAuth2 Login comes with #9).
-            http.formLogin(form -> form.defaultSuccessUrl("/", false));
+            http.formLogin(form -> form.loginPage(LOGIN_PAGE)
+                    .defaultSuccessUrl("/dashboard", false)
+                    .failureUrl(LOGIN_PAGE + "?error"));
+        }
+        List<ClientRegistration> registrations = SocialClientRegistrations.of(socialLogin);
+        if (!registrations.isEmpty()) {
+            ClientRegistrationRepository repository = new InMemoryClientRegistrationRepository(registrations);
+            TokenCipher cipher = TokenCipher.fromBase64Key(socialLogin.tokenEncryptionKey());
+            http.oauth2Login(oauth2 -> oauth2.loginPage(LOGIN_PAGE)
+                    .clientRegistrationRepository(repository)
+                    .authorizedClientService(
+                            EncryptedTokens.authorizedClientService(jdbcTemplate.getObject(), repository, cipher))
+                    .userInfoEndpoint(userInfo -> userInfo.userService(new SocialOAuth2UserService(
+                            SocialClientRegistrations.userInfoClient(), userAccountService.getObject(),
+                            socialLogin.admins())))
+                    .defaultSuccessUrl("/dashboard", false)
+                    .failureUrl(LOGIN_PAGE + "?error"));
         }
         return http.build();
     }

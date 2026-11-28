@@ -30,6 +30,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -86,7 +87,10 @@ public class PostImportService {
         this.transaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
     }
 
-    public ImportResultResponse importPosts(String fileName, InputStream file) {
+    /**
+     * @param uploadedBy {@code users.id} of the importer, or null (demo account)
+     */
+    public ImportResultResponse importPosts(String fileName, InputStream file, @Nullable Long uploadedBy) {
         ExcelSheet<PostImportRow> sheet = excelReader.read(file, PostImportRow.class, MAX_ROWS);
         List<RowError> errors = new ArrayList<>(sheet.errors());
         errors.addAll(duplicatesInFile(sheet.rows()));
@@ -94,7 +98,7 @@ public class PostImportService {
             throw new RowValidationException(
                     "File có %d lỗi, chưa có dòng nào được lưu".formatted(errors.size()), errors);
         }
-        ImportBatch batch = transaction.execute(status -> save(fileName, sheet));
+        ImportBatch batch = transaction.execute(status -> save(fileName, sheet, uploadedBy));
         log.info("Imported {}: {} rows, {} new posts, {} updated posts, {} snapshots (batch {})", fileName,
                 batch.getTotalRows(), batch.getCreatedPosts(), batch.getUpdatedPosts(), batch.getSnapshotsCreated(),
                 batch.getId());
@@ -115,7 +119,7 @@ public class PostImportService {
         return errors;
     }
 
-    private ImportBatch save(String fileName, ExcelSheet<PostImportRow> sheet) {
+    private ImportBatch save(String fileName, ExcelSheet<PostImportRow> sheet, @Nullable Long uploadedBy) {
         PostKeys keys = new PostKeys();
         Map<PostKey, Post> existing = lockExisting(sheet.rows(), keys);
         // created_at / updated_at of the inserted rows, and captured_at of every snapshot of this import
@@ -145,8 +149,10 @@ public class PostImportService {
         if (!snapshots.isEmpty()) {
             bulkRepository.insertSnapshots(snapshots, now, now);
         }
-        ImportBatch batch = batchRepository.save(new ImportBatch(fileName, sheet.totalRows(), newPosts.size(),
-                updated, snapshots.size(), snapshots.isEmpty() ? null : now));
+        ImportBatch created = new ImportBatch(fileName, sheet.totalRows(), newPosts.size(),
+                updated, snapshots.size(), snapshots.isEmpty() ? null : now);
+        created.setUploadedBy(uploadedBy);
+        ImportBatch batch = batchRepository.save(created);
         // Sent after commit (IMPORT_COMPLETED): today's snapshots, and the past of posts that changed account.
         statsChanges.importCompleted(batch.getId(), now, accountChanged);
         return batch;

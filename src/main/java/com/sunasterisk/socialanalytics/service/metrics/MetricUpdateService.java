@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 import net.javacrumbs.shedlock.core.LockConfiguration;
 import net.javacrumbs.shedlock.core.LockProvider;
 import net.javacrumbs.shedlock.core.SimpleLock;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.task.TaskRejectedException;
@@ -78,22 +79,23 @@ public class MetricUpdateService {
 
     /** A scheduled run, in the calling thread. The caller holds the lock ({@code @SchedulerLock}). */
     public void runScheduled() {
-        execute(startRun(RunTrigger.SCHEDULED));
+        execute(startRun(RunTrigger.SCHEDULED, null));
     }
 
     /**
      * Starts a manual run in the background and returns its id at once.
      *
+     * @param triggeredBy {@code users.id} of the admin, or null (demo account)
      * @throws ConflictException a run is already going (on this instance or another)
      */
-    public long startManual() {
+    public long startManual(@Nullable Long triggeredBy) {
         Optional<SimpleLock> lock = lockProvider.lock(new LockConfiguration(clock.instant(),
                 MetricsJobProperties.LOCK_NAME, properties.lockAtMostFor(), Duration.ZERO));
         if (lock.isEmpty()) {
             throw new ConflictException("Job cập nhật số liệu đang chạy, hãy thử lại khi chạy xong");
         }
         try {
-            long runId = startRun(RunTrigger.MANUAL);
+            long runId = startRun(RunTrigger.MANUAL, triggeredBy);
             jobLauncher.launch(() -> execute(runId), lock.get());
             return runId;
         } catch (RuntimeException ex) {
@@ -115,14 +117,14 @@ public class MetricUpdateService {
     }
 
     /** Marks abandoned runs FAILED and creates the new RUNNING run, in one short transaction. */
-    long startRun(RunTrigger trigger) {
+    long startRun(RunTrigger trigger, @Nullable Long triggeredBy) {
         Long runId = transaction.execute(status -> {
             Instant now = DbTime.toColumnPrecision(clock.instant());
             int abandoned = runRepository.failRunning(now, INTERRUPTED);
             if (abandoned > 0) {
                 log.warn("Metrics job: marked {} interrupted run(s) as FAILED", abandoned);
             }
-            return runRepository.save(new MetricUpdateRun(trigger, now)).getId();
+            return runRepository.save(new MetricUpdateRun(trigger, now, triggeredBy)).getId();
         });
         if (runId == null) {
             throw new IllegalStateException("Run not created");

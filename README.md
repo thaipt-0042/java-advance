@@ -10,7 +10,7 @@ Mini project của khóa **Java Spring Boot – Advance**: ứng dụng web giú
 | Build | Maven (wrapper `./mvnw`) |
 | Database | MySQL 8.4 (JPA / Hibernate), migration bằng Flyway |
 | API Docs | springdoc-openapi (Swagger UI) |
-| Security | Spring Security 7 (form login demo ở `dev`, CSRF) |
+| Security | Spring Security 7: đăng nhập Facebook / X (OAuth2, PKCE), form login demo ở `dev`, CSRF; phiên lưu MySQL (Spring Session JDBC) |
 | Giao diện | Thymeleaf (`templates/`), CSS trong `static/css` |
 | Excel | Apache POI (`poi-ooxml`) |
 | Background job | `@Scheduled` + `@Async` (`ThreadPoolTaskExecutor`), ShedLock trên MySQL |
@@ -80,11 +80,17 @@ docker compose up -d
 | `dev` | như mặc định, thêm: bật Swagger/OpenAPI, form đăng nhập demo, seed dữ liệu mẫu khi DB trống, log package app ở `DEBUG` |
 | `test` | MySQL 8.4 và Artemis qua Testcontainers, form đăng nhập demo với mật khẩu cố định, chỉ log ra console |
 
-Các biến cấu hình (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `PORT`, `FORWARD_HEADERS_STRATEGY`, `APP_TIME_ZONE`, `ARTEMIS_HOST`, `ARTEMIS_PORT`, `ARTEMIS_USER`, `ARTEMIS_PASSWORD`, `METRICS_JOB_CRON`, `METRICS_JOB_THREADS`, `APP_DEMO_ADMIN_PASSWORD`, `APP_DEMO_USER_PASSWORD`, `SPRING_PROFILES_ACTIVE`) xem trong `.env.example`.
+Các biến cấu hình (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `PORT`, `FORWARD_HEADERS_STRATEGY`, `APP_TIME_ZONE`, `ARTEMIS_HOST`, `ARTEMIS_PORT`, `ARTEMIS_USER`, `ARTEMIS_PASSWORD`, `METRICS_JOB_CRON`, `METRICS_JOB_THREADS`, `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET`, `TWITTER_CLIENT_ID`, `TWITTER_CLIENT_SECRET`, `APP_TOKEN_ENCRYPTION_KEY`, `APP_ADMIN_ACCOUNTS`, `APP_DEMO_ADMIN_PASSWORD`, `APP_DEMO_USER_PASSWORD`, `SPRING_PROFILES_ACTIVE`) xem trong `.env.example`.
 
 ### Đăng nhập và quyền
 
-- **Đăng nhập:** profile `dev` có form đăng nhập demo ở `/login` (trang mặc định của Spring Security) với hai tài khoản: `demo-admin` (`ADMIN`) và `demo-user` (`USER`), mật khẩu đặt trong `.env` (tối thiểu 8 ký tự; thiếu thì app không khởi động). Profile khác chưa có cách đăng nhập cho tới khi có đăng nhập Facebook/X (#9).
+- **Đăng nhập:** trang `/login` có nút "Đăng nhập bằng Facebook" / "Đăng nhập bằng X" cho mỗi provider đã cấu hình, và ở profile `dev` thêm form của hai tài khoản demo `demo-admin` (`ADMIN`), `demo-user` (`USER`) (mật khẩu trong `.env`, tối thiểu 8 ký tự).
+  - Bật provider: đặt cả `FACEBOOK_CLIENT_ID` / `FACEBOOK_CLIENT_SECRET` (hoặc `TWITTER_*`) của app tạo trên trang developer, khai báo callback `<địa chỉ app>/login/oauth2/code/facebook` (hoặc `/twitter`). Bật provider nào thì bắt buộc có `APP_TOKEN_ENCRYPTION_KEY` (`openssl rand -base64 32`), thiếu thì app không khởi động.
+  - Đăng nhập thành công thì về dashboard; thất bại (từ chối cấp quyền, `state` sai) thì về `/login` kèm thông báo.
+  - Mỗi lần đăng nhập, bảng `users` được tạo/cập nhật theo `provider` + id của tài khoản, role đặt lại theo `APP_ADMIN_ACCOUNTS` (`FACEBOOK:<id>,TWITTER:<id>`; còn lại là `USER`).
+  - Token truy cập được lưu mã hóa AES-GCM (`oauth2_authorized_client`), không log, không trả ra API. Đổi khóa thì token cũ không đọc được nữa: người dùng chỉ cần đăng nhập lại.
+  - Phiên đăng nhập lưu trong MySQL (Spring Session JDBC, cookie `SESSION`): restart app không đăng xuất mọi người, nhiều instance dùng chung phiên.
+  - Import và chạy job tay ghi lại người làm (`import_batches.uploaded_by`, `metric_update_runs.triggered_by`); tài khoản demo không có trong `users` nên để trống.
 - **Quyền** (`docs/cau-hoi-lam-ro.md` Q1): đã đăng nhập thì đọc được mọi API `GET` (kể cả export); tạo/sửa/xóa, import và các lệnh khác chỉ `ADMIN`. Đường dẫn không khai báo thì bị từ chối.
 - **Lỗi:** API chưa đăng nhập trả 401 `UNAUTHORIZED`, không đủ quyền hoặc thiếu CSRF token trả 403 `FORBIDDEN`, cùng format JSON với các lỗi khác. Trang web chưa đăng nhập thì chuyển về `/login`.
 - **CSRF:** mọi request thay đổi dữ liệu cần token. Token nằm trong cookie `XSRF-TOKEN` (JavaScript đọc được); gọi API thì gửi lại giá trị đó trong header `X-XSRF-TOKEN`. API chỉ nhận token qua header, không nhận trường `_csrf` (kể cả upload multipart). Form của trang web (đăng nhập, đăng xuất) gửi trường ẩn `_csrf`. Swagger UI tự gửi header này.
@@ -94,7 +100,7 @@ Gọi API bằng `curl` (profile `dev`):
 ```bash
 # Lấy cookie phiên và token của trang đăng nhập, rồi đăng nhập
 curl -s -c cookies.txt http://localhost:8080/login \
-  | grep -o 'name="_csrf" type="hidden" value="[^"]*"' | sed 's/.*value="//; s/"$//' > csrf.txt
+  | grep -o 'name="_csrf" value="[^"]*"' | sed 's/.*value="//; s/"$//' > csrf.txt
 curl -s -b cookies.txt -c cookies.txt -d "username=demo-admin&password=$APP_DEMO_ADMIN_PASSWORD&_csrf=$(cat csrf.txt)" \
   http://localhost:8080/login
 # Đọc dữ liệu: chỉ cần cookie (lần gọi này cũng cấp cookie XSRF-TOKEN mới)
@@ -206,7 +212,7 @@ Bảng được tính lại qua queue `analytics.stats-refresh` trên Apache Art
 | Job | `service/metrics/*Tests`, `client/MockSocialMetricsClientTests`, `controller/JobApiTests` | Service với Mockito (tài khoản lỗi, quá thời gian, hàng đợi đầy, khóa đang bị giữ); updater và API trên MySQL thật (bài bị xóa giữa chừng, lần chạy bỏ dở, lịch chạy bỏ lượt khi bị khóa) |
 | Trang web | `web/DashboardControllerTests`, `security/LoginFlowApiTests` | `@WebMvcTest` với template và security thật (giờ Việt Nam, nút chỉ cho `ADMIN`, trang lỗi); server thật: đăng nhập rồi bấm nút với `_csrf` của form |
 | JMS và thống kê | `messaging/*Tests`, `repository/DailyStatsRepositoryTests`, `service/Stats*Tests` | Broker thật (Testcontainers): chỉ gửi sau commit, rollback thì không gửi, message lỗi 4 lần vào DLQ; truy vấn thống kê với ví dụ Q12 trên MySQL |
-| Quyền truy cập | `security/SecurityConfigTests`, `DemoLoginDisabledTests` | `@WebMvcTest` với cấu hình security thật: 401/403, CSRF, đường dẫn không khai báo, đăng nhập demo |
+| Quyền truy cập | `security/SecurityConfigTests`, `DemoLoginDisabledTests`, `OAuth2LoginTests`, `EncryptedTokensTests` | `@WebMvcTest` với cấu hình security thật: 401/403, CSRF, đường dẫn không khai báo, đăng nhập demo |
 | Server thật | `controller/ForwardedHeadersApiTests`, `ImportUploadLimitApiTests`, `security/LoginFlowApiTests` | `RANDOM_PORT` + `java.net.http` (`support/LoginSession` đăng nhập như trình duyệt): những gì Tomcat làm mà MockMvc bỏ qua (header proxy, giới hạn upload, cookie CSRF) |
 
 Test dùng DB chạy trên MySQL 8.4 thật qua Testcontainers nên cần Docker đang chạy (không cần `docker compose up`). Một container dùng chung cho cả lượt test. JaCoCo chỉ báo cáo, chưa đặt ngưỡng coverage tối thiểu.

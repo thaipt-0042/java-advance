@@ -237,7 +237,7 @@ class PostImportServiceTests {
     }
 
     private ImportResultResponse importFile(byte[] file) {
-        return importService.importPosts("posts.xlsx", new ByteArrayInputStream(file));
+        return importService.importPosts("posts.xlsx", new ByteArrayInputStream(file), null);
     }
 
     private void givenTransaction() {

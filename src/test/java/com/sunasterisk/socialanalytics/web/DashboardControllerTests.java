@@ -3,6 +3,8 @@ package com.sunasterisk.socialanalytics.web;
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -91,7 +93,7 @@ class DashboardControllerTests {
 
     @Test
     void runButtonStartsTheJobAndComesBackWithAMessage() throws Exception {
-        when(metricUpdateService.startManual()).thenReturn(13L);
+        when(metricUpdateService.startManual(isNull())).thenReturn(13L);
 
         mockMvc.perform(post("/dashboard/update-metrics").with(user("boss").roles("ADMIN")).with(csrf()))
                 .andExpect(redirectedUrl("/dashboard"))
@@ -100,7 +102,7 @@ class DashboardControllerTests {
 
     @Test
     void runButtonWhileTheJobRunsSaysSo() throws Exception {
-        when(metricUpdateService.startManual()).thenThrow(new ConflictException("running"));
+        when(metricUpdateService.startManual(isNull())).thenThrow(new ConflictException("running"));
 
         mockMvc.perform(post("/dashboard/update-metrics").with(user("boss").roles("ADMIN")).with(csrf()))
                 .andExpect(redirectedUrl("/dashboard"))
@@ -113,7 +115,7 @@ class DashboardControllerTests {
                 .andExpect(status().isForbidden());
         mockMvc.perform(post("/dashboard/update-metrics").with(user("boss").roles("ADMIN")))
                 .andExpect(status().isForbidden());
-        verify(metricUpdateService, never()).startManual();
+        verify(metricUpdateService, never()).startManual(any());
     }
 
     @Test

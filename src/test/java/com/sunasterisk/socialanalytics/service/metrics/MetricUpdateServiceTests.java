@@ -179,7 +179,7 @@ class MetricUpdateServiceTests {
     void manualRunWhileTheLockIsTakenIs409() {
         when(lockProvider.lock(any())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(service::startManual)
+        assertThatThrownBy(() -> service.startManual(null))
                 .isInstanceOf(ConflictException.class)
                 .hasMessage("Job cập nhật số liệu đang chạy, hãy thử lại khi chạy xong");
         verify(runRepository, never()).save(any());
@@ -192,7 +192,12 @@ class MetricUpdateServiceTests {
         MetricUpdateRun manual = run(9L, RunTrigger.MANUAL);
         when(runRepository.save(any())).thenReturn(manual);
 
-        assertThat(service.startManual()).isEqualTo(9L);
+        assertThat(service.startManual(5L)).isEqualTo(9L);
+
+        ArgumentCaptor<MetricUpdateRun> created = ArgumentCaptor.forClass(MetricUpdateRun.class);
+        verify(runRepository).save(created.capture());
+        assertThat(created.getValue().getTriggeredBy()).isEqualTo(5L);
+        assertThat(created.getValue().getTriggerType()).isEqualTo(RunTrigger.MANUAL);
 
         ArgumentCaptor<LockConfiguration> config = ArgumentCaptor.forClass(LockConfiguration.class);
         verify(lockProvider).lock(config.capture());
@@ -210,7 +215,7 @@ class MetricUpdateServiceTests {
         when(runRepository.save(any())).thenReturn(manual);
         doThrow(new TaskRejectedException("busy")).when(jobLauncher).launch(any(), any());
 
-        assertThatThrownBy(service::startManual).isInstanceOf(TaskRejectedException.class);
+        assertThatThrownBy(() -> service.startManual(null)).isInstanceOf(TaskRejectedException.class);
         verify(lock).unlock();
     }
 

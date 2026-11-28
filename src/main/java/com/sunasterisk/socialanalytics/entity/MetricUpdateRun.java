@@ -13,8 +13,8 @@ import org.hibernate.type.SqlTypes;
  * One run of the metrics job, failed runs included. {@code startedAt} is also the {@code capturedAt} of every
  * snapshot the run creates.
  *
- * <p>The table also has {@code triggered_by} (the admin who started a manual run); it is mapped once logins are
- * stored as users (#9).
+ * <p>{@code triggered_by} is the {@code users} row of the admin who started a manual run (null for a scheduled run
+ * and for the demo accounts).
  */
 @Entity
 @Table(name = "metric_update_runs")
@@ -31,6 +31,9 @@ public class MetricUpdateRun extends BaseEntity {
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "status", nullable = false, length = 20)
     private RunStatus status;
+
+    @Column(name = "triggered_by")
+    private Long triggeredBy;
 
     @Column(name = "started_at", nullable = false)
     private Instant startedAt;
@@ -55,7 +58,12 @@ public class MetricUpdateRun extends BaseEntity {
     }
 
     public MetricUpdateRun(RunTrigger triggerType, Instant startedAt) {
+        this(triggerType, startedAt, null);
+    }
+
+    public MetricUpdateRun(RunTrigger triggerType, Instant startedAt, Long triggeredBy) {
         this.triggerType = triggerType;
+        this.triggeredBy = triggeredBy;
         this.status = RunStatus.RUNNING;
         this.startedAt = startedAt;
     }
@@ -94,6 +102,10 @@ public class MetricUpdateRun extends BaseEntity {
 
     public RunTrigger getTriggerType() {
         return triggerType;
+    }
+
+    public Long getTriggeredBy() {
+        return triggeredBy;
     }
 
     public RunStatus getStatus() {
