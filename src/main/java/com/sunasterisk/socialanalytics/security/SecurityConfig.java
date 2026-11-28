@@ -56,7 +56,8 @@ public class SecurityConfig {
     static final String LOGIN_PAGE = "/login";
 
     static final String[] PUBLIC_WEB_PATHS = {
-        "/login", "/oauth2/authorization/*", "/login/oauth2/code/*", "/error", "/css/**", "/js/**", "/favicon.ico",
+        "/login", "/oauth2/authorization/*", "/login/oauth2/code/*", "/error", "/css/**", "/js/**", "/webjars/**",
+        "/favicon.ico",
         "/actuator/health", "/actuator/health/**",
         // Only served in the dev profile (springdoc is off elsewhere); the API itself still needs a login.
         "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**",
@@ -90,7 +91,7 @@ public class SecurityConfig {
         http.authorizeHttpRequests(requests -> requests
                         .requestMatchers(PUBLIC_WEB_PATHS).permitAll()
                         .requestMatchers(HttpMethod.POST, "/dashboard/update-metrics").hasRole("ADMIN")
-                        .requestMatchers("/", "/dashboard", "/ws/**").authenticated()
+                        .requestMatchers("/", "/dashboard", "/dashboard/run-status", "/ws/**").authenticated()
                         .anyRequest().denyAll())
                 // SockJS can't add the CSRF header to its XHR / iframe posts: no HTTP-level check for /ws/** only;
                 // the STOMP CONNECT frame carries the token instead (WebSocketSecurityConfig).

@@ -46,6 +46,13 @@ public class DashboardController {
         return "dashboard";
     }
 
+    /** The run status block alone, re-rendered by the page after a {@code JOB_FINISHED} event. */
+    @GetMapping("/dashboard/run-status")
+    public String runStatus(Model model) {
+        model.addAttribute("view", DashboardView.of(metricUpdateService.latest(), clock.getZone()));
+        return "dashboard :: run-status";
+    }
+
     /** {@code ADMIN} only ({@code SecurityConfig}); 409 of the API becomes a message here. */
     @PostMapping("/dashboard/update-metrics")
     public String updateMetrics(Authentication authentication, RedirectAttributes redirect) {

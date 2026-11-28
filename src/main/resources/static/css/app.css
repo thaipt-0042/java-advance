@@ -85,3 +85,12 @@ a.button {
 #demo-login h3 { margin: 0; font-size: 15px; }
 #demo-login label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 #demo-login input { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; }
+
+.chart-header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+.chart-header h2 { margin: 0 auto 0 0; }
+.chart-header label { font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.chart-header select { font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; }
+.live { font-size: 12px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); }
+.live[data-state="connected"] { color: var(--good); border-color: var(--good); }
+.live[data-state="disconnected"] { color: var(--bad); border-color: var(--bad); }
+#charts canvas { max-width: 100%; }
