@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
@@ -75,7 +76,7 @@ class ExcelReaderTests {
             assertThat(row.rowNumber()).isEqualTo(2);
             // Text is stripped and an empty cell is null.
             assertThat(row.value()).isEqualTo(new PostImportRow(SocialPlatform.TWITTER, "p-1", "page", null, null,
-                    null, 10L, 2L, 3L, 100L));
+                    null, null, 10L, 2L, 3L, 100L));
         });
     }
 
@@ -112,6 +113,26 @@ class ExcelReaderTests {
         assertThat(sheet.errors()).containsExactly(
                 new RowError(3, "likes", "Phải là số nguyên"),
                 new RowError(3, "shares", "Phải là số nguyên"));
+    }
+
+    @Test
+    void readsAdCostFromNumberAndTextCellsWithAtMostTwoDecimals() {
+        ExcelSheet<PostImportRow> sheet = read(Xlsx.of(row("platform", "externalId", "accountName", "adCost"),
+                row("FACEBOOK", "a", "page", 12.5),
+                row("FACEBOOK", "b", "page", " 1234.56 "),
+                row("FACEBOOK", "c", "page", "abc"),
+                row("FACEBOOK", "d", "page", true),
+                row("FACEBOOK", "e", "page", -1),
+                row("FACEBOOK", "f", "page", 1.234),
+                row("FACEBOOK", "g", "page", null)));
+
+        assertThat(sheet.rows()).extracting(row -> row.value().adCost())
+                .containsExactly(new BigDecimal("12.5"), new BigDecimal("1234.56"), null);
+        assertThat(sheet.errors()).extracting(RowError::row, RowError::column, RowError::message).contains(
+                tuple(4, "adCost", "Phải là số"),
+                tuple(5, "adCost", "Phải là số"));
+        assertThat(sheet.errors()).extracting(RowError::row, RowError::column)
+                .containsExactly(tuple(4, "adCost"), tuple(5, "adCost"), tuple(6, "adCost"), tuple(7, "adCost"));
     }
 
     @Test
@@ -340,7 +361,8 @@ class ExcelReaderTests {
         assertInvalid(Xlsx.of(row("platform", "externalId"), row("FACEBOOK", "a")),
                 "Thiếu cột bắt buộc: accountName");
         assertInvalid(Xlsx.of(row("platform", "externalId", "accountName", "title"), row("FACEBOOK", "a", "p", "t")),
-                "Cột lạ: \"title\". Các cột hợp lệ: " + String.join(", ", POST_HEADER));
+                "Cột lạ: \"title\". Các cột hợp lệ: platform, externalId, accountName, url, content, publishedAt, "
+                        + "adCost, likes, shares, comments, followers");
         assertInvalid(Xlsx.of(row("platform", "externalId", "accountName", "ExternalId"), row("FACEBOOK", "a", "p")),
                 "Cột \"ExternalId\" xuất hiện hai lần");
         assertInvalid(Xlsx.of(row("platform", 2026, "accountName")), "Tiêu đề cột B1 phải là chữ");

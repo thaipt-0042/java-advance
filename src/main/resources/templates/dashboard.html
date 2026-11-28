@@ -59,6 +59,20 @@
         </form>
     </section>
 
+    <section class="card" id="ad-cost">
+        <h2>Chi phí quảng cáo</h2>
+        <dl>
+            <dt>Tỷ giá USD → VND (dịch vụ SOAP)</dt>
+            <dd th:if="${adCost.rate}" th:text="${adCost.rate}">1 USD = 25.123 VND</dd>
+            <dd th:if="${adCost.rateUnavailable}" class="error-text">Không lấy được tỷ giá</dd>
+            <dt>Tổng chi phí của các bài viết</dt>
+            <dd>
+                <span th:text="${adCost.totalUsd}">1.234,50 USD</span>
+                <span th:if="${adCost.totalVnd}" th:text="'≈ ' + ${adCost.totalVnd}">≈ 31.000.000 VND</span>
+            </dd>
+        </dl>
+    </section>
+
     <section class="card" id="charts" th:data-time-zone="${view.timeZone}">
         <div class="chart-header">
             <h2>Biểu đồ theo ngày</h2>

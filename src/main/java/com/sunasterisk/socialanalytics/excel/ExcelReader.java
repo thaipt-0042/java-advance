@@ -53,8 +53,9 @@ import org.springframework.util.StringUtils;
  *   <li>Cell problems don't stop the reading: the errors of every row are returned in {@link ExcelSheet#errors()}
  *       so the user can fix most of the file in one go. A row with a cell that can't be converted reports only those
  *       cells; Bean Validation runs on it once they are fixed.</li>
- *   <li>Supported component types: {@code String}, {@code Long}, {@code Instant} and enums. Text is stripped and an
- *       empty cell is null. A date cell has no time zone, so it is read in the application zone ({@link Clock}).</li>
+ *   <li>Supported component types: {@code String}, {@code Long}, {@code BigDecimal}, {@code Instant} and enums.
+ *       Text is stripped and an empty cell is null. A date cell has no time zone, so it is read in the application
+ *       zone ({@link Clock}).</li>
  *   <li>Rows whose mapped cells are all empty are skipped (and not counted).</li>
  * </ul>
  *
@@ -276,6 +277,9 @@ public class ExcelReader {
             if (type == Instant.class) {
                 return toInstant(cell, cellType);
             }
+            if (type == BigDecimal.class) {
+                return toDecimal(cell, cellType);
+            }
             return toEnum(cell, cellType, type);
         } catch (IllegalStateException | NumberFormatException ex) {
             // A malformed cell, e.g. a numeric cell holding text (<c r="B2"><v>abc</v></c>) written by another tool:
@@ -313,6 +317,22 @@ public class ExcelReader {
             return number == null ? null : number.longValueExact();
         } catch (NumberFormatException | ArithmeticException ex) {
             throw new CellException("Phải là số nguyên");
+        }
+    }
+
+    /** A number cell, or text such as {@code 12.50}. The double of a number cell is read as Excel shows it. */
+    private static @Nullable BigDecimal toDecimal(Cell cell, CellType cellType) {
+        try {
+            return switch (cellType) {
+                case NUMERIC -> BigDecimal.valueOf(cell.getNumericCellValue());
+                case STRING -> {
+                    String text = blankToNull(cell.getStringCellValue());
+                    yield text == null ? null : new BigDecimal(text);
+                }
+                default -> throw new CellException("Phải là số");
+            };
+        } catch (NumberFormatException ex) {
+            throw new CellException("Phải là số");
         }
     }
 
@@ -403,6 +423,7 @@ public class ExcelReader {
                 }
                 Class<?> componentType = component.getType();
                 if (!(componentType == String.class || componentType == Long.class || componentType == Instant.class
+                        || componentType == BigDecimal.class
                         || componentType.isEnum())) {
                     throw new IllegalStateException("%s.%s: unsupported type %s".formatted(type.getSimpleName(),
                             component.getName(), componentType.getSimpleName()));

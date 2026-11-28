@@ -39,7 +39,7 @@ class PostApiTests extends ApiTestBase {
                 mockMvc.perform(get("/api/v1/posts/{id}", id)).andExpect(status().isOk())
                         .andReturn().getResponse().getContentAsString()}) {
             assertThat(JsonPath.<Map<String, Object>>read(body, "$")).containsOnlyKeys("id", "platform",
-                    "externalId", "accountName", "url", "content", "publishedAt", "createdAt", "updatedAt");
+                    "externalId", "accountName", "url", "content", "publishedAt", "adCost", "createdAt", "updatedAt");
             assertThat(JsonPath.<Number>read(body, "$.id").longValue()).isEqualTo(id);
             assertThat(JsonPath.<String>read(body, "$.platform")).isEqualTo("FACEBOOK");
             assertThat(JsonPath.<String>read(body, "$.externalId")).isEqualTo(externalId);
@@ -121,6 +121,44 @@ class PostApiTests extends ApiTestBase {
                 .andExpect(jsonPath("$.updatedAt").value(updatedAt))
                 .andExpect(jsonPath("$.publishedAt").value("2026-03-01T03:00:00.123456Z"))
                 .andExpect(jsonPath("$.updatedAt").value(not(createdAt)));
+    }
+
+    @Test
+    void adCostIsKeptToTheCentAndAnUpdateWithoutItClearsIt() throws Exception {
+        String externalId = "ad-" + token();
+        String created = mockMvc.perform(post("/api/v1/posts").contentType(MediaType.APPLICATION_JSON).content("""
+                        {"platform": "FACEBOOK", "externalId": "%s", "accountName": "page", "adCost": 12.5}
+                        """.formatted(externalId)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        long id = ((Number) JsonPath.read(created, "$.id")).longValue();
+        mockMvc.perform(get("/api/v1/posts/{id}", id)).andExpect(jsonPath("$.adCost").value(12.5));
+
+        mockMvc.perform(put("/api/v1/posts/{id}", id).contentType(MediaType.APPLICATION_JSON).content("""
+                        {"accountName": "page", "adCost": 1234567890123.45, "updatedAt": "%s"}
+                        """.formatted(updatedAtOf("/api/v1/posts", id))))
+                .andExpect(status().isOk());
+        // Checked as text: a double can't hold 15 significant digits exactly.
+        mockMvc.perform(get("/api/v1/posts/{id}", id))
+                .andExpect(content().string(containsString("\"adCost\":1234567890123.45,")));
+
+        // PUT replaces every editable field: no adCost means none.
+        mockMvc.perform(put("/api/v1/posts/{id}", id).contentType(MediaType.APPLICATION_JSON).content("""
+                        {"accountName": "page", "updatedAt": "%s"}
+                        """.formatted(updatedAtOf("/api/v1/posts", id))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.adCost").doesNotExist());
+    }
+
+    @Test
+    void rejectsANegativeAdCostOrOneWithMoreThanTwoDecimals() throws Exception {
+        for (String adCost : new String[] {"-0.01", "1.234", "12345678901234"}) {
+            mockMvc.perform(post("/api/v1/posts").contentType(MediaType.APPLICATION_JSON).content("""
+                            {"platform": "FACEBOOK", "externalId": "ad-%s", "accountName": "page", "adCost": %s}
+                            """.formatted(token(), adCost)))
+                    .andExpect(status().isUnprocessableContent())
+                    .andExpect(jsonPath("$.errors[0].field").value("adCost"));
+        }
     }
 
     @Test

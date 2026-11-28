@@ -40,12 +40,13 @@ public class PostBulkRepository {
                         .addValue("url", post.getUrl())
                         .addValue("content", post.getContent())
                         .addValue("publishedAt", utc(post.getPublishedAt()))
+                        .addValue("adCost", post.getAdCost())
                         .addValue("now", utc(now)))
                 .toArray(SqlParameterSource[]::new);
         jdbc.batchUpdate("""
-                insert into posts (platform, external_id, account_name, url, content, published_at,
+                insert into posts (platform, external_id, account_name, url, content, published_at, ad_cost,
                                    created_at, updated_at)
-                values (:platform, :externalId, :accountName, :url, :content, :publishedAt, :now, :now)
+                values (:platform, :externalId, :accountName, :url, :content, :publishedAt, :adCost, :now, :now)
                 """, params);
     }
 

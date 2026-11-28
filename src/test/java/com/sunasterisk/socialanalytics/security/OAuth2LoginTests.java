@@ -19,13 +19,17 @@ import com.sunasterisk.socialanalytics.dto.LatestRunResponse;
 import com.sunasterisk.socialanalytics.entity.SocialPlatform;
 import com.sunasterisk.socialanalytics.entity.User;
 import com.sunasterisk.socialanalytics.entity.UserRole;
+import com.sunasterisk.socialanalytics.service.ExchangeRateService;
+import com.sunasterisk.socialanalytics.service.PostService;
 import com.sunasterisk.socialanalytics.service.UserAccountService;
 import com.sunasterisk.socialanalytics.service.metrics.MetricUpdateService;
 import com.sunasterisk.socialanalytics.support.FixedClockConfiguration;
 import com.sunasterisk.socialanalytics.web.DashboardController;
 import com.sunasterisk.socialanalytics.web.LoginController;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Instant;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -56,6 +60,18 @@ class OAuth2LoginTests {
 
     @MockitoBean
     private MetricUpdateService metricUpdateService;
+
+    @MockitoBean
+    private PostService postService;
+
+    /** Unstubbed, it answers "no rate": the ad-cost block then shows its note. */
+    @MockitoBean
+    private ExchangeRateService exchangeRateService;
+
+    @BeforeEach
+    void noAdCost() {
+        when(postService.totalAdCost()).thenReturn(BigDecimal.ZERO);
+    }
 
     @MockitoBean
     private UserAccountService userAccountService;

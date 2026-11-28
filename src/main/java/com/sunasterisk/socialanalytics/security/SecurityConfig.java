@@ -12,6 +12,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
@@ -28,12 +29,13 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
 /**
- * Two filter chains ({@code docs/03-kien-truc.md}, section 3):
+ * Three filter chains ({@code docs/03-kien-truc.md}, section 3):
  *
  * <ul>
  *   <li><b>API</b> ({@code /api/**}): any logged-in user may read ({@code GET}); every other method needs
  *       {@code ADMIN} ({@code docs/cau-hoi-lam-ro.md} Q1). 401 / 403 are JSON in the common error format, never a
  *       redirect.</li>
+ *   <li><b>SOAP</b> ({@code /soap/**}): the mock exchange-rate service, public, no CSRF (#15).</li>
  *   <li><b>Web</b> (every other path): the login page, static files, health and Swagger are public; the dashboard
  *       and the WebSocket endpoint need a login, its "run the job now" button {@code ADMIN}; <b>any other path is
  *       denied</b>, so a path nobody declared is never open by accident.
@@ -83,8 +85,23 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * The mock SOAP service: public and read-only, called by machines (no cookie, no session), so no CSRF
+     * ({@code docs/03-kien-truc.md}, section 3).
+     */
     @Bean
     @Order(2)
+    SecurityFilterChain soapSecurityFilterChain(HttpSecurity http) {
+        http.securityMatcher("/soap/**")
+                .authorizeHttpRequests(requests -> requests.anyRequest().permitAll())
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .requestCache(cache -> cache.disable());
+        return http.build();
+    }
+
+    @Bean
+    @Order(3)
     SecurityFilterChain webSecurityFilterChain(HttpSecurity http, DemoLoginProperties demoLogin,
             SocialLoginProperties socialLogin, ObjectProvider<JdbcTemplate> jdbcTemplate,
             ObjectProvider<UserAccountService> userAccountService) {

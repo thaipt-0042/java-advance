@@ -2,6 +2,7 @@ package com.sunasterisk.socialanalytics.repository;
 
 import com.sunasterisk.socialanalytics.entity.Post;
 import com.sunasterisk.socialanalytics.entity.SocialPlatform;
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -46,6 +47,10 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     @Query("select p from Post p where p.platform = :platform and p.externalId in :externalIds")
     List<Post> findAllForUpdate(@Param("platform") SocialPlatform platform,
             @Param("externalIds") Collection<String> externalIds);
+
+    /** Sum of the advertising costs (USD) of every post; 0 when none has one. */
+    @Query("select coalesce(sum(p.adCost), 0) from Post p")
+    BigDecimal totalAdCost();
 
     /** Deletes without loading the post first; returns the number of deleted rows (0 if it doesn't exist). */
     @Modifying

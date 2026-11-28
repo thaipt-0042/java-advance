@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.Instant;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -26,6 +27,9 @@ public class Post extends BaseEntity {
     public static final int URL_MAX_LENGTH = 1000;
     public static final int CONTENT_MAX_LENGTH = 5000;
     /** Accepted {@code url}: http(s) only; empty is allowed and stored as null. */
+    /** {@code ad_cost} is DECIMAL(15, 2). */
+    public static final int AD_COST_PRECISION = 15;
+    public static final int AD_COST_SCALE = 2;
     public static final String URL_PATTERN = "^(https?://.*)?$";
 
     @Enumerated(EnumType.STRING)
@@ -49,6 +53,10 @@ public class Post extends BaseEntity {
 
     @Column(name = "published_at")
     private Instant publishedAt;
+
+    /** Advertising cost in USD (Q7); converted to VND at display / export time with the SOAP rate. */
+    @Column(name = "ad_cost", precision = AD_COST_PRECISION, scale = AD_COST_SCALE)
+    private BigDecimal adCost;
 
     protected Post() {
     }
@@ -97,5 +105,13 @@ public class Post extends BaseEntity {
 
     public void setPublishedAt(Instant publishedAt) {
         this.publishedAt = publishedAt;
+    }
+
+    public BigDecimal getAdCost() {
+        return adCost;
+    }
+
+    public void setAdCost(BigDecimal adCost) {
+        this.adCost = adCost;
     }
 }

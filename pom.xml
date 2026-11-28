@@ -67,6 +67,16 @@
             <artifactId>spring-boot-starter-thymeleaf</artifactId>
         </dependency>
 
+        <!-- SOAP: mock exchange-rate service (Spring-WS endpoint) and its client -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webservices</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>wsdl4j</groupId>
+            <artifactId>wsdl4j</artifactId>
+        </dependency>
+
         <!-- Browser libraries of the dashboard (Chart.js, SockJS, STOMP), versions pinned above -->
         <dependency>
             <groupId>org.webjars.npm</groupId>
@@ -211,6 +221,11 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webservices-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-artemis-test</artifactId>
             <scope>test</scope>
         </dependency>
@@ -232,6 +247,27 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <!-- JAXB classes of the SOAP messages, generated from src/main/resources/xsd/exchange-rates.xsd
+                 (plugin and version as in Spring's "Producing a SOAP web service" guide) -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>jaxb2-maven-plugin</artifactId>
+                <version>4.0.0</version>
+                <executions>
+                    <execution>
+                        <id>xjc</id>
+                        <goals>
+                            <goal>xjc</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <sources>
+                        <source>${project.basedir}/src/main/resources/xsd/exchange-rates.xsd</source>
+                    </sources>
+                    <packageName>com.sunasterisk.socialanalytics.soap.generated</packageName>
+                </configuration>
+            </plugin>
             <!-- Load Mockito as a java agent instead of dynamic self-attach (required on newer JDKs) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -250,6 +286,12 @@
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>${jacoco.version}</version>
+                <configuration>
+                    <excludes>
+                        <!-- JAXB classes generated from the XSD at build time -->
+                        <exclude>com/sunasterisk/socialanalytics/soap/generated/**</exclude>
+                    </excludes>
+                </configuration>
                 <executions>
                     <execution>
                         <id>prepare-agent</id>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Mock exchange-rate service (#15): one operation, the rate of a currency pair on a day. JAXB classes are
+     generated from this file at build time (jaxb2-maven-plugin). -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="http://sunasterisk.com/socialanalytics/exchange-rates"
+           targetNamespace="http://sunasterisk.com/socialanalytics/exchange-rates"
+           elementFormDefault="qualified">
+
+    <xs:simpleType name="currency">
+        <xs:restriction base="xs:string">
+            <xs:pattern value="[A-Z]{3}"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:element name="getExchangeRateRequest">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="from" type="tns:currency"/>
+                <xs:element name="to" type="tns:currency"/>
+                <xs:element name="date" type="xs:date"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+
+    <xs:element name="getExchangeRateResponse">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="from" type="tns:currency"/>
+                <xs:element name="to" type="tns:currency"/>
+                <xs:element name="date" type="xs:date"/>
+                <!-- Units of "to" for one unit of "from" -->
+                <xs:element name="rate" type="xs:decimal"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+</xs:schema>

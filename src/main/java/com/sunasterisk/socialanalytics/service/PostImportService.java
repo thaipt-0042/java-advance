@@ -16,6 +16,7 @@ import com.sunasterisk.socialanalytics.repository.PostBulkRepository;
 import com.sunasterisk.socialanalytics.repository.PostBulkRepository.NewSnapshot;
 import com.sunasterisk.socialanalytics.util.DbTime;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.text.CollationKey;
 import java.text.Collator;
 import java.time.Clock;
@@ -197,6 +198,7 @@ public class PostImportService {
         post.setUrl(row.url());
         post.setContent(row.content());
         post.setPublishedAt(DbTime.toColumnPrecision(row.publishedAt()));
+        post.setAdCost(row.adCost());
         return post;
     }
 
@@ -223,7 +225,16 @@ public class PostImportService {
             post.setPublishedAt(publishedAt);
             changed = true;
         }
+        // compareTo: 12.5 and 12.50 are the same cost.
+        if (columns.contains("adCost") && !sameAmount(post.getAdCost(), row.adCost())) {
+            post.setAdCost(row.adCost());
+            changed = true;
+        }
         return changed;
+    }
+
+    private static boolean sameAmount(@Nullable BigDecimal a, @Nullable BigDecimal b) {
+        return a == null ? b == null : b != null && a.compareTo(b) == 0;
     }
 
     private record PostKey(SocialPlatform platform, CollationKey externalId) {

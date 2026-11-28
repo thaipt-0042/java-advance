@@ -24,10 +24,17 @@ import com.sunasterisk.socialanalytics.entity.RunStatus;
 import com.sunasterisk.socialanalytics.entity.RunTrigger;
 import com.sunasterisk.socialanalytics.exception.ConflictException;
 import com.sunasterisk.socialanalytics.security.SecurityConfig;
+import com.sunasterisk.socialanalytics.service.ExchangeRateService.ExchangeRate;
+import com.sunasterisk.socialanalytics.service.ExchangeRateService;
+import com.sunasterisk.socialanalytics.service.PostService;
 import com.sunasterisk.socialanalytics.service.metrics.MetricUpdateService;
 import com.sunasterisk.socialanalytics.support.FixedClockConfiguration;
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -53,6 +60,18 @@ class DashboardControllerTests {
 
     @MockitoBean
     private MetricUpdateService metricUpdateService;
+
+    @MockitoBean
+    private PostService postService;
+
+    /** Unstubbed, it answers "no rate": the ad-cost block then shows its note. */
+    @MockitoBean
+    private ExchangeRateService exchangeRateService;
+
+    @BeforeEach
+    void noAdCost() {
+        when(postService.totalAdCost()).thenReturn(BigDecimal.ZERO);
+    }
 
     @Test
     void showsTheLastUpdateAndTheLatestRunInVietnamTime() throws Exception {
@@ -80,6 +99,37 @@ class DashboardControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(content().string(allOf(containsString("Chưa có lần cập nhật nào"),
                         containsString("Job chưa chạy lần nào"))));
+    }
+
+    @Test
+    void showsTheAdCostInUsdAndVndWithTodaysRate() throws Exception {
+        when(metricUpdateService.latest()).thenReturn(PARTIAL_RUN);
+        when(postService.totalAdCost()).thenReturn(new BigDecimal("1234.50"));
+        when(exchangeRateService.usdToVndToday()).thenReturn(Optional.of(
+                new ExchangeRate("USD", "VND", LocalDate.of(2026, 11, 20), new BigDecimal("25100"))));
+
+        mockMvc.perform(get("/dashboard").with(user("viewer").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(allOf(
+                        containsString("1 USD = 25.100 VND (ngày 2026-11-20)"),
+                        containsString("1.234,50 USD"),
+                        // 1,234.50 × 25,100
+                        containsString("≈ 30.985.950 VND"),
+                        not(containsString("Không lấy được tỷ giá")))));
+    }
+
+    @Test
+    void withoutARateThePageStillShowsTheUsdTotalAndSaysSo() throws Exception {
+        when(metricUpdateService.latest()).thenReturn(PARTIAL_RUN);
+        when(postService.totalAdCost()).thenReturn(new BigDecimal("1234.50"));
+
+        mockMvc.perform(get("/dashboard").with(user("viewer").roles("USER")))
+                .andExpect(status().isOk())
+                .andExpect(content().string(allOf(
+                        containsString("Không lấy được tỷ giá"),
+                        containsString("1.234,50 USD"),
+                        not(containsString("1 USD =")),
+                        not(containsString(" VND</span>")))));
     }
 
     @Test

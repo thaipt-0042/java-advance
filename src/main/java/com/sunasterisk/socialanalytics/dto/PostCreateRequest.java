@@ -3,9 +3,12 @@ package com.sunasterisk.socialanalytics.dto;
 import com.sunasterisk.socialanalytics.entity.Post;
 import com.sunasterisk.socialanalytics.entity.SocialPlatform;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.time.Instant;
 import org.hibernate.validator.constraints.URL;
 
@@ -20,5 +23,8 @@ public record PostCreateRequest(
         @Size(max = Post.URL_MAX_LENGTH) @URL(regexp = Post.URL_PATTERN) String url,
         @Size(max = Post.CONTENT_MAX_LENGTH) String content,
         @Schema(description = "Thời điểm đăng (ISO-8601)", example = "2026-03-01T03:00:00Z")
-        Instant publishedAt) {
+        Instant publishedAt,
+        @Schema(description = "Chi phí quảng cáo (USD), tối đa 2 chữ số thập phân", example = "12.50")
+        @PositiveOrZero @Digits(integer = Post.AD_COST_PRECISION - Post.AD_COST_SCALE, fraction = Post.AD_COST_SCALE)
+        BigDecimal adCost) {
 }

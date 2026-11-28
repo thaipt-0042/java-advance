@@ -1,5 +1,6 @@
 package com.sunasterisk.socialanalytics.exception;
 
+import com.sunasterisk.socialanalytics.soap.ExchangeRateUnavailableException;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -39,6 +40,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  *   <li>Not logged in ({@link AuthenticationException}): 401 {@code UNAUTHORIZED}. Logged in without the role, or a
  *       missing / wrong CSRF token ({@link AccessDeniedException}): 403 {@code FORBIDDEN}. Both are raised by the
  *       security filters, which hand them to this class ({@code SecurityConfig}).</li>
+ *   <li>{@link ExchangeRateUnavailableException} (SOAP fault, timeout): 502 {@code BAD_GATEWAY}.</li>
  *   <li>{@link ResourceNotFoundException}: 404 {@code NOT_FOUND}.</li>
  *   <li>{@link ConflictException}, {@link DataIntegrityViolationException} and
  *       {@link PessimisticLockingFailureException} (deadlock, lock wait timeout): 409 {@code CONFLICT}.</li>
@@ -96,6 +98,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 ? "Thiếu hoặc sai CSRF token: gửi lại giá trị cookie XSRF-TOKEN trong header X-XSRF-TOKEN"
                 : "Không có quyền thực hiện thao tác này";
         return respond(ex, HttpStatus.FORBIDDEN, "FORBIDDEN", detail, request);
+    }
+
+    /** The exchange-rate SOAP service failed (#15): the error is upstream, not in the request. */
+    @ExceptionHandler(ExchangeRateUnavailableException.class)
+    ResponseEntity<Object> handleExchangeRateUnavailable(ExchangeRateUnavailableException ex, WebRequest request) {
+        log.warn("Exchange-rate service failed: {}", ex.getMessage());
+        return respond(ex, HttpStatus.BAD_GATEWAY, "BAD_GATEWAY", "Không lấy được tỷ giá, hãy thử lại sau", request);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)

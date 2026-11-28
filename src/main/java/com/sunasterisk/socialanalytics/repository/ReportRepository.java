@@ -1,6 +1,7 @@
 package com.sunasterisk.socialanalytics.repository;
 
 import com.sunasterisk.socialanalytics.entity.SocialPlatform;
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -49,10 +50,10 @@ public class ReportRepository {
             @Nullable Instant publishedBefore, long afterId, int limit) {
         return jdbc.query("""
                         select p.id, p.platform, p.external_id, p.account_name, p.url, p.content, p.published_at,
-                               m.likes, m.shares, m.comments, m.followers, m.captured_at
+                               p.ad_cost, m.likes, m.shares, m.comments, m.followers, m.captured_at
                         from (
                             select p.id, p.platform, p.external_id, p.account_name, p.url, p.content,
-                                   p.published_at,
+                                   p.published_at, p.ad_cost,
                                    (select max(s.captured_at) from social_metrics s where s.post_id = p.id)
                                        as latest_at
                             from posts p
@@ -84,7 +85,8 @@ public class ReportRepository {
     private static ReportEntry entry(ResultSet rs) throws SQLException {
         return new ReportEntry(rs.getLong("id"), SocialPlatform.valueOf(rs.getString("platform")),
                 rs.getString("external_id"), rs.getString("account_name"), rs.getString("url"),
-                rs.getString("content"), instant(rs, "published_at"), rs.getObject("likes", Long.class),
+                rs.getString("content"), instant(rs, "published_at"), rs.getBigDecimal("ad_cost"),
+                rs.getObject("likes", Long.class),
                 rs.getObject("shares", Long.class), rs.getObject("comments", Long.class),
                 rs.getObject("followers", Long.class), instant(rs, "captured_at"));
     }
@@ -104,7 +106,8 @@ public class ReportRepository {
      * the keyset for the next page.
      */
     public record ReportEntry(long postId, SocialPlatform platform, String externalId, String accountName,
-            @Nullable String url, @Nullable String content, @Nullable Instant publishedAt, @Nullable Long likes,
+            @Nullable String url, @Nullable String content, @Nullable Instant publishedAt,
+            @Nullable BigDecimal adCost, @Nullable Long likes,
             @Nullable Long shares, @Nullable Long comments, @Nullable Long followers, @Nullable Instant capturedAt) {
     }
 }
